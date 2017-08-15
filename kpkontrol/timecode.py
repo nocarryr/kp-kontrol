@@ -8,7 +8,7 @@ class FrameRate(object):
         key = Fraction(numerator, denom)
         if key in cls.registry:
             return cls.registry[key]
-        obj = super(FrameRate, cls).__new__(cls, numerator, denom)
+        obj = super(FrameRate, cls).__new__(cls)
         cls.registry[key] = obj
         return obj
     def __init__(self, numerator, denom=1):
@@ -58,6 +58,10 @@ class FrameRate(object):
     def __div__(self, other):
         return self.value / other
     def __rdiv__(self, other):
+        return other / self.value
+    def __truediv__(self, other):
+        return self.value / other
+    def __rtruediv__(self, other):
         return other / self.value
     def __floordiv__(self, other):
         return self.value // other

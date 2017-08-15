@@ -1,3 +1,4 @@
+import sys
 import io
 import threading
 import shutil
@@ -12,6 +13,7 @@ except ImportError:
 
 import pytest
 
+PY3 = sys.version_info.major >= 3
 
 KP_RESPONSE_DATA = [
     {'url_path':'/clips',
@@ -62,8 +64,12 @@ class KPHttpHandler(BaseHTTPRequestHandler):
             self.send_error(404, 'Not Found')
             return None
         r = ''.join(resp_data['response'].splitlines())
-        f = io.StringIO()
-        f.write(r.decode('UTF-8'))
+        if PY3:
+            f = io.BytesIO()
+            f.write(bytes(r, 'UTF-8'))
+        else:
+            f = io.StringIO()
+            f.write(r.decode('UTF-8'))
         length = f.tell()
         f.seek(0)
         self.send_response(200)
