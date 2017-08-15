@@ -2,7 +2,10 @@ import datetime
 
 from kpkontrol.timecode import FrameRate, Timecode
 
-class ClipFormat(object):
+class ObjectBase(object):
+    pass
+
+class ClipFormat(ObjectBase):
     def __init__(self, **kwargs):
         self.width = kwargs.get('width')
         self.height = kwargs.get('height')
@@ -37,7 +40,7 @@ class ClipFormat(object):
             self=self, fielding=fielding
         )
 
-class Clip(object):
+class Clip(ObjectBase):
     timestamp_fmt = '%m/%d/%y %H:%M:%S'
     def __init__(self, **kwargs):
         self.name = kwargs.get('name')
