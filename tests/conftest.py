@@ -110,8 +110,19 @@ def kp_http_server():
     yield 'localhost:{}'.format(server_thread.port)
     server_thread.stop()
 
-@pytest.fixture
-def frame_rate_defs():
+FRAME_RATES = [
+    (24., Fraction(24, 1)),
+    (25., Fraction(25, 1)),
+    (29.97, Fraction(30000, 1001)),
+    (30., Fraction(30, 1)),
+    (59.94, Fraction(60000, 1001)),
+    (60., Fraction(60, 1)),
+]
+
+@pytest.fixture(params=FRAME_RATES)
+def frame_rate_defs(request):
+    flt_val, frac_val = request.param
+    return {'float':flt_val, 'fraction':frac_val}
     float_vals = [24., 25., 29.97, 30., 59.94, 60.]
     fraction_vals = [
         Fraction(24, 1),

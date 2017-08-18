@@ -1,6 +1,6 @@
 import datetime
 
-from kpkontrol.timecode import FrameRate, Timecode
+from kpkontrol.timecode import FrameRate, FrameFormat, Timecode
 
 class ObjectBase(object):
     pass

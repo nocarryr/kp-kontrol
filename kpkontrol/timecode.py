@@ -1,314 +1,80 @@
 import datetime
-import math
-from fractions import Fraction
+import numbers
 
-class FrameRate(object):
-    registry = {}
-    def __new__(cls, numerator, denom=1):
-        key = Fraction(numerator, denom)
-        if key in cls.registry:
-            return cls.registry[key]
-        obj = super(FrameRate, cls).__new__(cls)
-        cls.registry[key] = obj
-        return obj
-    def __init__(self, numerator, denom=1):
-        self.__numerator = numerator
-        self.__denom = denom
-        self.__value = Fraction(numerator, denom)
-    @property
-    def numerator(self):
-        return self.__numerator
-    @property
-    def denom(self):
-        return self.__denom
-    @property
-    def value(self):
-        return self.__value
-    @property
-    def float_value(self):
-        return float(self.value)
-    def __eq__(self, other):
-        if not isinstance(other, FrameRate):
-            return NotImplemented
-        return self.value == other.value
-    def __ne__(self, other):
-        if not isinstance(other, FrameRate):
-            return NotImplemented
-        return self.value != other.value
-    def __lt__(self, other):
-        if not isinstance(other, FrameRate):
-            return NotImplemented
-        return self.value < other.value
-    def __le__(self, other):
-        if not isinstance(other, FrameRate):
-            return NotImplemented
-        return self.value <= other.value
-    def __gt__(self, other):
-        if not isinstance(other, FrameRate):
-            return NotImplemented
-        return self.value > other.value
-    def __ge__(self, other):
-        if not isinstance(other, FrameRate):
-            return NotImplemented
-        return self.value >= other.value
-    def __mul__(self, other):
-        return self.value * other
-    def __rmul__(self, other):
-        return other * self.value
-    def __div__(self, other):
-        return self.value / other
-    def __rdiv__(self, other):
-        return other / self.value
-    def __truediv__(self, other):
-        return self.value / other
-    def __rtruediv__(self, other):
-        return other / self.value
-    def __floordiv__(self, other):
-        return self.value // other
-    def __rfloordiv__(self, other):
-        return other // self.value
-    def __mod__(self, other):
-        return self.value % other
-    def __rmod__(self, other):
-        return other % self.value
-    def __repr__(self):
-        return '<FrameRate: {self} ({self.float_value:05.2f})>'.format(self=self)
-    def __str__(self):
-        return '{self.numerator}/{self.denom}'.format(self=self)
+from pyltc.frames import FrameRate, FrameFormat, Frame
 
-
-class Timecode(object):
-    def __init__(self, hour, minute, second, frame, frame_rate, drop_frame=False):
-        self._total_frames = None
-        self._total_seconds = None
-        self._dropped_frames = None
-        self.hour = hour
-        self.minute = minute
-        self.second = second
-        self.frame = frame
-        self.frame_rate = frame_rate
-        self.drop_frame = drop_frame
-        if self.drop_frame and self.minute % 10:
-            if self.frame_rate == FrameRate(30000, 1001) and self.frame < 2:
-                self.frame += 2
-            elif self.frame_rate == FrameRate(60000, 1001) and self.frame < 4:
-                self.frame += 4
-    @property
-    def hour(self):
-        return getattr(self, '_hour', None)
-    @hour.setter
-    def hour(self, value):
-        if value == self.hour:
-            return
-        self._total_frames = None
-        self._total_seconds = None
-        self._dropped_frames = None
-        self._hour = value
-    @property
-    def minute(self):
-        return getattr(self, '_minute', None)
-    @minute.setter
-    def minute(self, value):
-        if value == self.minute:
-            return
-        self._total_frames = None
-        self._total_seconds = None
-        self._dropped_frames = None
-        self._minute = value
-    @property
-    def second(self):
-        return getattr(self, '_second', None)
-    @second.setter
-    def second(self, value):
-        if value == self.second:
-            return
-        self._total_frames = None
-        self._total_seconds = None
-        self._dropped_frames = None
-        self._second = value
-    @property
-    def frame(self):
-        return getattr(self, '_frame', None)
-    @frame.setter
-    def frame(self, value):
-        if value == self.frame:
-            return
-        self._total_frames = None
-        self._total_seconds = None
-        self._dropped_frames = None
-        self._frame = value
+class Timecode(Frame):
     @classmethod
-    def parse(cls, s, frame_rate, drop_frame=False):
-        if ';' in s:
+    def parse(cls, tc_str, frame_rate, drop_frame=False):
+        if ';' in tc_str:
             drop_frame = True
-            s = ':'.join(s.split(';'))
-        h, m, s, f = [int(v) for v in s.split(':')]
-        return cls(h, m, s, f, frame_rate, drop_frame)
+            tc_str = ':'.join(tc_str.split(';'))
+        keys = ['hours', 'minutes', 'seconds', 'frames']
+        kwargs = {k:int(v) for k, v in zip(keys, tc_str.split(':'))}
+        kwargs['frame_format'] = FrameFormat(rate=frame_rate, drop_frame=drop_frame)
+        return cls(**kwargs)
     @classmethod
-    def from_frames(cls, total_frames, frame_rate, drop_frame=False):
-        tseconds = int(total_frames // frame_rate)
-        if drop_frame:
-            oth = cls(0, 0, 0, 0, frame_rate=frame_rate, drop_frame=drop_frame)
-            dropped = oth._calc_dropped_frames(total_seconds=tseconds)
-        else:
-            dropped = 0
-        frame = int(total_frames % frame_rate) + dropped
-        h = int(tseconds // 3600)
-        m = int(tseconds % 3600 // 60)
-        s = int(tseconds % 3600 % 60)
-        return cls(h, m, s, frame, frame_rate=frame_rate, drop_frame=drop_frame)
-    @property
-    def total_frames(self):
-        if self._total_frames is not None:
-            return self._total_frames
-        s = self.hour * 3600
-        s += self.minute * 60
-        s += self.second
-        frames = float(s * self.frame_rate)
-        if self.frame_rate.denom == 1001 and round((frames % self.frame_rate), 10) == 0:
-            frames = math.ceil(frames)
-        frames = int(frames)
-        dropped = self.dropped_frames
-        frames += self.frame
-        frames -= dropped
-        self._total_frames = frames
-        return frames
-    @total_frames.setter
-    def total_frames(self, total_frames):
-        current_total = self.total_frames
-        if current_total == total_frames:
-            return
-        tc = self.from_frames(total_frames, self.frame_rate, self.drop_frame)
-        self.hour = tc.hour
-        self.minute = tc.minute
-        self.second = tc.second
-        self.frame = tc.frame
+    def from_frames(cls, total_frames, frame_format):
+        obj = cls(frame_format=frame_format)
+        for i in range(total_frames):
+            obj.incr()
+        return obj
     @property
     def total_seconds(self):
-        if self._total_seconds is not None:
-            return self._total_seconds
-        frames = self.total_frames
-        s = float(frames / self.frame_rate)
-        self._total_seconds = s
+        s = int((self.total_frames-self.value) / self.frame_format.rate)
+        micro_s = self.frame_times[self.value]
+        s += float(micro_s)
         return s
-    @total_seconds.setter
-    def total_seconds(self, total_seconds):
-        current_total = self.total_seconds
-        if current_total == total_seconds:
-            return
-        self.total_frames = float(total_seconds * self.frame_rate)
     @property
     def timedelta(self):
         return datetime.timedelta(seconds=self.total_seconds)
     @property
-    def dropped_frames(self):
-        dropped = self._dropped_frames
-        if dropped is None:
-            dropped = self._dropped_frames = self._calc_dropped_frames()
-        return dropped
-    def to_list(self):
-        return [self.hour, self.minute, self.second, self.frame]
-    def _calc_dropped_frames(self, total_seconds=None, other=None):
-        if not self.drop_frame:
-            return 0
-        if other is not None:
-            if not self._same_format(other):
-                raise Exception()
-            total_seconds = other.total_seconds
-        elif total_seconds is None:
-            total_seconds = self.hour * 3600
-            total_seconds += self.minute * 60
-            total_seconds += self.second
+    def datetime(self):
+        t = datetime.time()
+        dt = datetime.datetime.combine(datetime.date(2000, 1, 1), t)
 
-        hours = total_seconds // 3600
-        total_seconds -= hours * 3600
-        minutes = total_seconds // 60
+        dt += self.timedelta
+        return dt
 
-        dropped = (hours * 108) + ((minutes // 10) * 18) + (minutes % 10 * 2)
-        if self.frame_rate == FrameRate(60000, 1001):
-            dropped *= 2
-        return dropped
-    def _same_format(self, other):
-        if other.frame_rate != self.frame_rate:
-            return False
-        if other.drop_frame != self.drop_frame:
-            return False
-        return True
     def __add__(self, other):
-        if not isinstance(other, Timecode):
+        obj = self.copy()
+        if isinstance(other, Timecode):
+            other = other.total_frames
+        if isinstance(other, numbers.Number):
+            obj += other
+            return obj
+        elif isinstance(other, datetime.timedelta):
+            dt = self.datetime
+            dt += other
+            obj.from_dt(dt)
+            return obj
+        else:
             return NotImplemented
-        if not self._same_format(other):
-            raise Exception()
-        frames = self.total_frames + other.total_frames
-        return Timecode.from_frames(frames, self.frame_rate, self.drop_frame)
     def __sub__(self, other):
-        if not isinstance(other, Timecode):
-            return NotImplemented
-        if not self._same_format(other):
-            raise Exception()
-        frames = self.total_frames - other.total_frames
-        return Timecode.from_frames(frames, self.frame_rate, self.drop_frame)
-    def __iadd__(self, other):
+        obj = self.copy()
         if isinstance(other, Timecode):
-            if not self._same_format(other):
-                raise Exception()
-            total_frames = other.total_frames
-            if other < self:
-                total_frames *= -1
-            self.total_frames += other.total_frames
-            return self
+            other = other.total_frames
+        if isinstance(other, numbers.Number):
+            obj -= other
+            return obj
         elif isinstance(other, datetime.timedelta):
-            self.total_seconds += other.total_seconds()
-            return self
-        return NotImplemented
-    def __isub__(self, other):
-        if isinstance(other, Timecode):
-            if not self._same_format(other):
-                raise Exception()
-            total_frames = other.total_frames
-            if other < self:
-                total_frames *= -1
-            self.total_frames -= other.total_frames
-            return self
-        elif isinstance(other, datetime.timedelta):
-            self.total_seconds -= other.total_seconds()
-            return self
-        return NotImplemented
-    def __eq__(self, other):
-        if not isinstance(other, Timecode):
-            return NotImplemented
-        if not self._same_format(other):
-            return False
-        for attr in ['hour', 'minute', 'second', 'frame']:
-            if getattr(self, attr) != getattr(other, attr):
-                return False
-        return True
-    def __ne__(self, other):
-        if not isinstance(other, Timecode):
-            return NotImplemented
-        return not self.__eq__(other)
-    def __gt__(self, other):
-        if isinstance(other, datetime.timedelta):
-            total_seconds = other.total_seconds()
-        elif isinstance(other, Timecode):
-            total_seconds = other.total_seconds
+            dt = self.datetime
+            dt -= other
+            obj.from_dt(dt)
+            return obj
         else:
             return NotImplemented
-        return self.total_seconds > total_seconds
-    def __lt__(self, other):
-        if isinstance(other, datetime.timedelta):
-            total_seconds = other.total_seconds()
-        elif isinstance(other, Timecode):
-            total_seconds = other.total_seconds
-        else:
-            return NotImplemented
-        return self.total_seconds < total_seconds
-    def __repr__(self):
-        return '<{self.__class__.__name__}: {self}>'.format(self=self)
+    def copy(self):
+        f = self.__class__(frame_format=self.frame_format, total_frames=self.total_frames)
+        f._value = self._value
+        f.second._value = self.second._value
+        f.minute._value = self.minute._value
+        f.hour._value = self.hour._value
+        return f
     def __str__(self):
         fmt = ':'.join(['{:02}'] * 3)
-        if self.drop_frame:
+        if self.frame_format.drop_frame:
             fmt = ';'.join([fmt, '{:02}'])
         else:
             fmt = ':'.join([fmt, '{:02}'])
-        return fmt.format(*self.to_list())
+        return fmt.format(*[v.value for v in self.get_hmsf()])
