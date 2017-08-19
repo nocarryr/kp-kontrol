@@ -37,7 +37,6 @@ class ObjectBase(object):
         all_names = set()
         all_defaults = {}
         for _cls in cls.iter_bases():
-            print(_cls)
             attr = '_{}__attribute_names'.format(_cls.__name__)
             names = getattr(_cls, attr, None)
             if names is not None:
