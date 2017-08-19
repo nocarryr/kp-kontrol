@@ -6,7 +6,9 @@ except ImportError:
 
 import requests
 
-from kpkontrol.objects import ParameterBase, Clip
+from kpkontrol.objects import (
+    ParameterBase, EnumParameter, IntParameter, StrParameter, Clip,
+)
 
 class RequestError(Exception):
     def __init__(self, req):
@@ -119,6 +121,52 @@ class SetParameter(Action):
         return super(SetParameter, self).build_query_params(**kwargs)
     def process_response(self, r):
         return r.content
+
+class Connect(Action):
+    _url_path = 'json'
+    _query_params = {'action':'connect', 'configid':0}
+    def process_response(self, r):
+        data = r.json()
+        return data['connectionid']
+
+class ListenForEvents(Action):
+    _url_path = 'json'
+    _query_params = {'action':'wait_for_config_events', 'configid':0}
+    def __init__(self, netloc, **kwargs):
+        self.connection_id = kwargs.get('connection_id')
+        self.all_parameters = kwargs.get('all_parameters')
+        super(ListenForEvents, self).__init__(netloc, **kwargs)
+    def __call__(self):
+        if self.all_parameters is None:
+            a = GetAllParameters(self.netloc)
+            self.all_parameters = a()
+        if self.connection_id is None:
+            a = Connect(self.netloc)
+            self.connection_id = a()
+            self.query_params = self.build_query_params()
+        return super(ListenForEvents, self).__call__()
+    def build_query_params(self, **kwargs):
+        kwargs['connectionid'] = self.connection_id
+        return super(ListenForEvents, self).build_query_params(**kwargs)
+    def process_response(self, r):
+        self.response_obj = r
+        params = {}
+        data = r.json()
+        for d in data:
+            if 'param_id' not in d:
+                continue
+            if 'str_value' not in d:
+                continue
+            param = self.all_parameters['by_id'][d['param_id']]
+            _d = {'parameter':param}
+            if isinstance(param, IntParameter):
+                _d['value'] = d['int_value']
+            elif isinstance(param, EnumParameter):
+                _d['value'] = param.enum_items[d['int_value']]
+            else:
+                _d['value'] = d['str_value']
+            params[param.id] = _d
+        return params
 
 class GetClips(Action):
     _url_path = 'clips'
