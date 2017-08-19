@@ -13,22 +13,59 @@ def parse_crap_json(s):
     return json.loads(s)
 
 class ObjectBase(object):
-    pass
+    __attribute_names = None
+    __attribute_defaults = None
+    def __init__(self, **kwargs):
+        names, defaults = self._get_attribute_data()
+        self.attribute_names_ = names
+        for key in names:
+            val = kwargs.get(key, defaults.get(key))
+            setattr(self, key, val)
+    @classmethod
+    def iter_bases(cls):
+        yield cls
+        for subcls in cls.__bases__:
+            if subcls is ObjectBase:
+                break
+            if not issubclass(subcls, ObjectBase):
+                continue
+            yield subcls
+            for _cls in subcls.iter_bases():
+                yield _cls
+    @classmethod
+    def _get_attribute_data(cls):
+        all_names = set()
+        all_defaults = {}
+        for _cls in cls.iter_bases():
+            print(_cls)
+            attr = '_{}__attribute_names'.format(_cls.__name__)
+            names = getattr(_cls, attr, None)
+            if names is not None:
+                all_names |= set(names)
+            attr = '_{}__attribute_defaults'.format(cls.__name__)
+            defaults = getattr(_cls, attr, None)
+            if defaults is not None:
+                defaults = defaults.copy()
+                for key, val in defaults.items():
+                    if isinstance(val, list):
+                        defaults[key] = val[:]
+                    elif isinstance(val, dict):
+                        defaults[key] = val.copy()
+                all_defaults.update(defaults)
+                all_names |= set(defaults.keys())
+        return all_names, all_defaults
 
 class ParameterBase(ObjectBase):
     #{u'data', u'enum', u'integer', u'octets', u'octets_read_only', u'string'}
-    def __init__(self, **kwargs):
-        self.id = kwargs.get('id')
-        self.name = kwargs.get('name')
-        self.description = kwargs.get('description')
-        self.default_value = kwargs.get('default_value')
-        self.min_value = kwargs.get('min_value')
-        self.max_value = kwargs.get('max_value')
-        self.class_names = kwargs.get('class_names', [])
-        self.relations = kwargs.get('relations', {})
-        self.register_type = kwargs.get('register_type')
-        self.persistence_type = kwargs.get('persistence_type')
-        self.param_type = kwargs.get('param_type')
+    __attribute_names = [
+        'id', 'name', 'description', 'default_value', 'min_value', 'max_value',
+        'class_names', 'relations', 'register_type',
+        'persistence_type', 'param_type',
+    ]
+    __attribute_defaults = {
+        'class_names':[],
+        'relations':{},
+    }
     @classmethod
     def from_json(cls, data):
         param_type = data['param_type']
@@ -70,11 +107,15 @@ class ParameterBase(ObjectBase):
         return self.name
 
 class EnumParameter(ParameterBase):
+    __attribute_names = ['enum_items']
+    __attribute_defaults = {
+        'enum_items':{},
+    }
     def __init__(self, **kwargs):
+        enum_items = kwargs.pop('enum_items', [])
         super(EnumParameter, self).__init__(**kwargs)
-        self.enum_items = {}
         self.enum_items_by_value = {}
-        for item in kwargs.get('enum_items', []):
+        for item in enum_items:
             self.add_enum_item(item)
     @classmethod
     def _from_json(cls, data, **kwargs):
@@ -103,10 +144,11 @@ class EnumParameter(ParameterBase):
                 return self.enum_items[d['text']]
 
 class ParameterEnumItem(ObjectBase):
+    __attribute_names = [
+        'name', 'description', 'value',
+    ]
     def __init__(self, **kwargs):
-        self.name = kwargs.get('name')
-        self.description = kwargs.get('description')
-        self.value = kwargs.get('value')
+        super(ParameterEnumItem, self).__init__(**kwargs)
         self.parameter = kwargs.get('parameter')
     @classmethod
     def from_json(cls, data, **kwargs):
@@ -122,10 +164,9 @@ class ParameterEnumItem(ObjectBase):
         return self.name
 
 class IntParameter(ParameterBase):
-    def __init__(self, **kwargs):
-        super(IntParameter, self).__init__(**kwargs)
-        self.value_suffix_singular = kwargs.get('value_suffix_singular')
-        self.value_suffix_plural = kwargs.get('value_suffix_plural')
+    __attribute_names = [
+        'value_suffix_singular', 'value_suffix_plural',
+    ]
     @classmethod
     def _from_json(cls, data, **kwargs):
         for d in data.get('string_attributes', []):
@@ -145,10 +186,9 @@ class IntParameter(ParameterBase):
         return int(parsed['value'])
 
 class StrParameter(ParameterBase):
-    def __init__(self, **kwargs):
-        super(StrParameter, self).__init__(**kwargs)
-        self.min_length = kwargs.get('min_length')
-        self.max_length = kwargs.get('max_length')
+    __attribute_names = [
+        'min_length', 'max_length',
+    ]
     @classmethod
     def _from_json(cls, data, **kwargs):
         kwargs.update({k:data[k] for k in ['min_length', 'max_length']})
@@ -167,12 +207,9 @@ PARAMETER_TYPES = {
 }
 
 class ClipFormat(ObjectBase):
-    def __init__(self, **kwargs):
-        self.width = kwargs.get('width')
-        self.height = kwargs.get('height')
-        self.frame_rate = kwargs.get('frame_rate')
-        self.interlaced = kwargs.get('interlaced')
-        self.fourcc = kwargs.get('fourcc')
+    __attribute_names = [
+        'width', 'height', 'frame_rate', 'interlaced', 'fourcc',
+    ]
     @classmethod
     def from_json(cls, data):
         kwargs = dict(
@@ -203,15 +240,10 @@ class ClipFormat(ObjectBase):
 
 class Clip(ObjectBase):
     timestamp_fmt = '%m/%d/%y %H:%M:%S'
-    def __init__(self, **kwargs):
-        self.name = kwargs.get('name')
-        self.duration_tc = kwargs.get('duration_tc')
-        self.duration_timedelta = kwargs.get('duration_timedelta')
-        self.total_frames = kwargs.get('total_frames')
-        self.timestamp = kwargs.get('timestamp')
-        self.format = kwargs.get('format')
-        self.audio_channels = kwargs.get('audio_channels')
-        self.start_timecode = kwargs.get('start_timecode')
+    __attribute_names = [
+        'name', 'duration_tc', 'duration_timedelta', 'total_frames',
+        'timestamp', 'format', 'audio_channels', 'start_timecode',
+    ]
     @classmethod
     def from_json(cls, data):
         kwargs = dict(
