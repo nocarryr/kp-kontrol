@@ -135,3 +135,19 @@ def frame_rate_defs(request):
     return dict({
         'floats':float_vals, 'fractions':fraction_vals
     })
+
+@pytest.fixture
+def parameter_test_data():
+    data = dict(
+        param_id='eParamID_Foo',
+        param_name='Foo',
+        default_value=0,
+        min_value=0,
+        max_value=10,
+        class_names=['test'],
+        string_attributes=[
+            {'name':'description',
+            'value':'Foo Description'},
+        ],
+    )
+    return data
