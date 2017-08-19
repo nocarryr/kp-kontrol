@@ -107,6 +107,19 @@ class GetParameter(Action):
     def process_response(self, r):
         return self.parameter.parse_response(r)
 
+class SetParameter(Action):
+    _url_path = 'config'
+    def __init__(self, netloc, **kwargs):
+        self.parameter = kwargs.get('parameter')
+        self.value = kwargs.get('value')
+        super(SetParameter, self).__init__(netloc, **kwargs)
+    def build_query_params(self, **kwargs):
+        kwargs['paramName'] = self.parameter.id
+        kwargs['newValue'] = self.value
+        return super(SetParameter, self).build_query_params(**kwargs)
+    def process_response(self, r):
+        return r.content
+
 class GetClips(Action):
     _url_path = 'clips'
     _query_params = {'action':'get_clips'}
