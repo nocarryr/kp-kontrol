@@ -1,9 +1,169 @@
 import datetime
+import json
+import re
 
 from kpkontrol.timecode import FrameRate, FrameFormat, Timecode
 
+def parse_crap_json(s):
+    c = re.compile('([a-zA-Z_]+):')
+    s = ''.join(s.splitlines())
+    s = s.strip(';')
+    s = c.sub(r'"\1":', s)
+    return json.loads(s)
+
 class ObjectBase(object):
     pass
+
+class ParameterBase(ObjectBase):
+    #{u'data', u'enum', u'integer', u'octets', u'octets_read_only', u'string'}
+    def __init__(self, **kwargs):
+        self.id = kwargs.get('id')
+        self.name = kwargs.get('name')
+        self.description = kwargs.get('description')
+        self.default_value = kwargs.get('default_value')
+        self.min_value = kwargs.get('min_value')
+        self.max_value = kwargs.get('max_value')
+        self.class_names = kwargs.get('class_names', [])
+        self.relations = kwargs.get('relations', {})
+        self.register_type = kwargs.get('register_type')
+        self.persistence_type = kwargs.get('persistence_type')
+        self.param_type = kwargs.get('param_type')
+    @classmethod
+    def from_json(cls, data):
+        param_type = data['param_type']
+        param_cls = PARAMETER_TYPES.get(param_type, cls)
+        return param_cls._from_json(data)
+    @classmethod
+    def _from_json(cls, data, **kwargs):
+        kwargs.update(dict(
+            id=data['param_id'],
+            name=data['param_name'],
+            default_value=data.get('default_value'),
+            min_value=data.get('min_value'),
+            max_value=data.get('max_value'),
+            class_names=data.get('class_names', []),
+            relations=data.get('relations', {}),
+            register_type=data.get('register_type'),
+            persistence_type=data.get('persistence_type'),
+            param_type=data['param_type'],
+        ))
+        for d in data.get('string_attributes', []):
+            key = d.get('name')
+            val = d.get('value')
+            if key in ['description']:
+                kwargs[key] = val
+        return cls(**kwargs)
+    def format_value(self, value):
+        return str(value)
+    def parse_response(self, r):
+        s = r.content
+        if isinstance(s, bytes):
+            s = s.decode('UTF-8')
+        parsed = parse_crap_json(s)
+        if isinstance(parsed, list) and len(parsed) == 1:
+            parsed = parsed[0]
+        return parsed
+    def __repr__(self):
+        return '<{self.__class__.__name__}: {self.name} ({self.id})>'.format(self=self)
+    def __str__(self):
+        return self.name
+
+class EnumParameter(ParameterBase):
+    def __init__(self, **kwargs):
+        super(EnumParameter, self).__init__(**kwargs)
+        self.enum_items = {}
+        self.enum_items_by_value = {}
+        for item in kwargs.get('enum_items', []):
+            self.add_enum_item(item)
+    @classmethod
+    def _from_json(cls, data, **kwargs):
+        kwargs['enum_items'] = data['enum_values']
+        return super(EnumParameter, cls)._from_json(data, **kwargs)
+    def add_enum_item(self, item):
+        if not isinstance(item, ParameterEnumItem):
+            item = ParameterEnumItem.from_json(item, parameter=self)
+        else:
+            item.parameter = self
+        self.enum_items[item.name] = item
+        self.enum_items_by_value[item.value] = item
+        return item
+    def item_from_value(self, value):
+        return self.enum_items_by_value[value]
+    def format_value(self, value):
+        if isinstance(value, numbers.Number):
+            item = self.item_from_value(value)
+        else:
+            item = self.enum_items[value]
+        return str(item)
+    def parse_response(self, r):
+        parsed = super(EnumParameter, self).parse_response(r)
+        for d in parsed:
+            if d.get('selected') == 'true':
+                return self.enum_items[d['text']]
+
+class ParameterEnumItem(ObjectBase):
+    def __init__(self, **kwargs):
+        self.name = kwargs.get('name')
+        self.description = kwargs.get('description')
+        self.value = kwargs.get('value')
+        self.parameter = kwargs.get('parameter')
+    @classmethod
+    def from_json(cls, data, **kwargs):
+        kwargs.update(dict(
+            name=data['short_text'],
+            description=data['text'],
+            value=data['value'],
+        ))
+        return cls(**kwargs)
+    def __repr__(self):
+        return str(self)
+    def __str__(self):
+        return self.name
+
+class IntParameter(ParameterBase):
+    def __init__(self, **kwargs):
+        super(IntParameter, self).__init__(**kwargs)
+        self.value_suffix_singular = kwargs.get('value_suffix_singular')
+        self.value_suffix_plural = kwargs.get('value_suffix_plural')
+    @classmethod
+    def _from_json(cls, data, **kwargs):
+        for d in data.get('string_attributes', []):
+            key = d.get('name')
+            val = d.get('value')
+            if key in ['value_suffix_singular', 'value_suffix_plural']:
+                kwargs[key] = val
+        return super(IntParameter, cls)._from_json(data, **kwargs)
+    def format_value(self, value):
+        if value == 1:
+            suffix = self.value_suffix_singular
+        else:
+            suffix = self.value_suffix_plural
+        return '{} {}'.format(value, suffix)
+    def parse_response(self, r):
+        parsed = super(IntParameter, self).parse_response(r)
+        return int(parsed['value'])
+
+class StrParameter(ParameterBase):
+    def __init__(self, **kwargs):
+        super(StrParameter, self).__init__(**kwargs)
+        self.min_length = kwargs.get('min_length')
+        self.max_length = kwargs.get('max_length')
+    @classmethod
+    def _from_json(cls, data, **kwargs):
+        kwargs.update({k:data[k] for k in ['min_length', 'max_length']})
+        return super(StrParameter, cls)._from_json(data, **kwargs)
+    def parse_response(self, r):
+        parsed = super(StrParameter, self).parse_response(r)
+        return str(parsed['value'])
+
+class OctetParameter(ParameterBase):
+    pass
+
+PARAMETER_TYPES = {
+    'enum':EnumParameter,
+    'integer':IntParameter,
+    'string':StrParameter,
+}
 
 class ClipFormat(ObjectBase):
     def __init__(self, **kwargs):

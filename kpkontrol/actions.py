@@ -6,7 +6,7 @@ except ImportError:
 
 import requests
 
-from kpkontrol.objects import Clip
+from kpkontrol.objects import ParameterBase, Clip
 
 class RequestError(Exception):
     def __init__(self, req):
@@ -39,9 +39,15 @@ class Action(object):
         return self._url_path.lstrip('/')
     @property
     def query_string(self):
+        qs = getattr(self, '_query_string', None)
+        if qs is not None:
+            return qs
         if not len(self.query_params):
             return ''
         return urlencode(self.query_params)
+    @query_string.setter
+    def query_string(self, value):
+        self._query_string = value
     @property
     def full_url(self):
         return self.build_url()
@@ -79,6 +85,27 @@ class Action(object):
         params.update(kwargs)
         return params
 
+class GetAllParameters(Action):
+    _url_path = 'descriptors'
+    _query_params = {'paramid':'*'}
+    def process_response(self, r):
+        params = {'by_id':{}, 'by_type':{}}
+        for d in r.json():
+            param = ParameterBase.from_json(d)
+            params['by_id'][param.id] = param
+            if param.param_type not in params['by_type']:
+                params['by_type'][param.param_type] = {}
+            params['by_type'][param.param_type][param.id] = param
+        return params
+
+class GetParameter(Action):
+    _url_path = 'options'
+    def __init__(self, netloc, **kwargs):
+        self.parameter = kwargs.get('parameter')
+        super(GetParameter, self).__init__(netloc, **kwargs)
+        self.query_string = self.parameter.id
+    def process_response(self, r):
+        return self.parameter.parse_response(r)
 
 class GetClips(Action):
     _url_path = 'clips'
