@@ -55,7 +55,30 @@ class ObjectBase(object):
         return all_names, all_defaults
 
 class ParameterBase(ObjectBase):
-    #{u'data', u'enum', u'integer', u'octets', u'octets_read_only', u'string'}
+    """Parameter definition as reported by the device
+
+    Holds descriptive information and data used to set/get values (where possible).
+    The parameter data is retrieved with :class:`kpkontrol.actions.GetAllParameters`.
+
+    Attributes:
+        id (str): The param_id used to get or set the parameter value
+        name (str): Short name for the parameter
+        description (str): Parameter description
+        default_value: The device's default value for the parameter
+        min_value: Minimum value allowed
+        max_value: Maximum value allowed
+        class_names (list): A ``list`` containing type information (readonly, etc.)
+        relations (dict): A ``dict`` containing conditions for the parameter
+            based on the values of other parameters
+        persistence_type (str): Value persistence of the parameter on the device
+            (persistent/ephemeral)
+        register_type (str): Values can be either "excluded" or "included", but
+            the significance seems unclear
+        param_type (str): The parameter's value type which can be one of
+            "data", "enum", "integer", "string", "octets", "octets_read_only".
+            This is used to determine which subclass to use for the Parameter
+
+    """
     __attribute_names = [
         'id', 'name', 'description', 'default_value', 'min_value', 'max_value',
         'class_names', 'relations', 'register_type',
@@ -67,6 +90,15 @@ class ParameterBase(ObjectBase):
     }
     @classmethod
     def from_json(cls, data):
+        """Parses the data from the device and creates an instance of :class:`ParameterBase`
+
+        The subclass is chosen from the given 'param_type' and further
+        processing is done in the :meth:`_from_json` ``classmethod``
+
+        Args:
+            data (dict): The data received from the device
+
+        """
         param_type = data['param_type']
         param_cls = PARAMETER_TYPES.get(param_type, cls)
         return param_cls._from_json(data)
@@ -91,8 +123,20 @@ class ParameterBase(ObjectBase):
                 kwargs[key] = val
         return cls(**kwargs)
     def format_value(self, value):
+        """Formats the parameter value into the appropriate type
+
+        Args:
+            value: The value to be formatted
+
+        """
         return str(value)
     def parse_response(self, r):
+        """Parses the response from :class:`kpkontrol.actions.GetParameter`
+
+        Args:
+            r: :class:`requests.Response` object
+
+        """
         s = r.content
         if isinstance(s, bytes):
             s = s.decode('UTF-8')
@@ -106,6 +150,15 @@ class ParameterBase(ObjectBase):
         return self.name
 
 class EnumParameter(ParameterBase):
+    """Enum parameter definition
+
+    Attributes:
+        enum_items (dict): Contains :class:`ParameterEnumItem` objects stored
+            using the item name as the key
+        enum_items_by_value (dict): Contains :class:`ParameterEnumItem` objects
+            stored using the item value as the key
+
+    """
     __attribute_names = ['enum_items']
     __attribute_defaults = {
         'enum_items':{},
@@ -131,6 +184,21 @@ class EnumParameter(ParameterBase):
     def item_from_value(self, value):
         return self.enum_items_by_value[value]
     def format_value(self, value):
+        """Returns the item for the given value
+
+        If the given value is ``int`` the item matching the :class:`ParameterEnumItem`
+        value is used.
+
+        If value is ``str`` the item matching the :class:`ParameterEnumItem`
+        name is used.
+
+        Args:
+            value (int or str):
+
+        Returns:
+            :class:`ParameterEnumItem`
+
+        """
         if isinstance(value, numbers.Number):
             item = self.item_from_value(value)
         else:
@@ -143,6 +211,14 @@ class EnumParameter(ParameterBase):
                 return self.enum_items[d['text']]
 
 class ParameterEnumItem(ObjectBase):
+    """Enumeration data used by :class:`EnumParameter`
+
+    Attributes:
+        name (str):
+        description (str):
+        value (int):
+
+    """
     __attribute_names = [
         'name', 'description', 'value',
     ]
@@ -163,6 +239,13 @@ class ParameterEnumItem(ObjectBase):
         return self.name
 
 class IntParameter(ParameterBase):
+    """Parameter with an integer value type
+
+    Attributes:
+        value_suffix_singular (str): Suffix used for singular values
+        value_suffix_plural (str): Suffix used for plural values
+
+    """
     __attribute_names = [
         'value_suffix_singular', 'value_suffix_plural',
     ]
@@ -185,6 +268,13 @@ class IntParameter(ParameterBase):
         return int(parsed['value'])
 
 class StrParameter(ParameterBase):
+    """Parameter with a string value type
+
+    Attributes:
+        min_length (int):
+        max_length (int):
+
+    """
     __attribute_names = [
         'min_length', 'max_length',
     ]
@@ -206,6 +296,17 @@ PARAMETER_TYPES = {
 }
 
 class ClipFormat(ObjectBase):
+    """Video format information
+
+    Attributes:
+        width (int): Width in pixels
+        height (int): Height in pixels
+        frame_rate: :class:`~kpkontrol.timecode.FrameRate`
+        interlaced (bool): Whether the format is interlaced (``True``) or
+            progressive (``False``)
+        fourcc (str): FOURCC codec information
+
+    """
     __attribute_names = [
         'width', 'height', 'frame_rate', 'interlaced', 'fourcc',
     ]
@@ -238,6 +339,22 @@ class ClipFormat(ObjectBase):
         )
 
 class Clip(ObjectBase):
+    """Clip information
+
+    Attributes:
+        name (str): The clip filename
+        duration_tc: The clip duration as a :class:`~kpkontrol.timecode.Timecode`
+            instance
+        duration_timedelta: The clip duration as a :class:`datetime.timedelta`
+        total_frames (int): Total number of video frames
+        timestamp: The last modified time for the clip as a :class:`datetime.datetime`
+            (Does not contain timezone information)
+        format: An :class:`ClipFormat` object containing video format information
+        audio_channels (int): Number of audio channels in the clip
+        start_timecode: The starting timecode for the clip as a
+            :class:`~kpkontrol.timecode.Timecode` object
+
+    """
     timestamp_fmt = '%m/%d/%y %H:%M:%S'
     __attribute_names = [
         'name', 'duration_tc', 'duration_timedelta', 'total_frames',
