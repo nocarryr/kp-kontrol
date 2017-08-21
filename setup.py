@@ -36,6 +36,7 @@ setup(
     packages=find_packages(exclude=['tests*']),
     install_requires=[
         'requests',
+        'python-dispatch',
         'python-ltc>=0.0.2',
     ],
     include_package_data=True,

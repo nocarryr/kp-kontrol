@@ -1,5 +1,6 @@
+from pydispatch import Dispatcher
 
-class ObjectBase(object):
+class ObjectBase(Dispatcher):
     __attribute_names = None
     __attribute_defaults = None
     def __init__(self, **kwargs):

@@ -2,8 +2,12 @@ import datetime
 import numbers
 
 from pyltc.frames import FrameRate, FrameFormat, Frame
+from kpkontrol.base import ObjectBase
 
-class Timecode(Frame):
+class Timecode(Frame, ObjectBase):
+    _events_ = ['on_change']
+    def __new__(cls, *args, **kwargs):
+        return ObjectBase.__new__(cls)
     @classmethod
     def parse(cls, tc_str, frame_rate, drop_frame=False):
         if ';' in tc_str:
@@ -35,7 +39,14 @@ class Timecode(Frame):
 
         dt += self.timedelta
         return dt
-
+    def set_value(self, value):
+        super(Timecode, self).set_value(value)
+        self.emit('on_change', obj=self)
+    def set(self, **kwargs):
+        prev = self.value
+        super(Timecode, self).set(**kwargs)
+        if self.value == prev:
+            self.emit('on_change', obj=self)
     def __add__(self, other):
         obj = self.copy()
         if isinstance(other, Timecode):
