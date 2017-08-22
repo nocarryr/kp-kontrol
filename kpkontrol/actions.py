@@ -160,9 +160,9 @@ class ListenForEvents(Action):
             param = self.all_parameters['by_id'][d['param_id']]
             _d = {'parameter':param}
             if isinstance(param, IntParameter):
-                _d['value'] = d['int_value']
+                _d['value'] = int(d['int_value'])
             elif isinstance(param, EnumParameter):
-                _d['value'] = param.enum_items[d['int_value']]
+                _d['value'] = param.enum_items[int(d['int_value'])]
             else:
                 _d['value'] = d['str_value']
             params[param.id] = _d
