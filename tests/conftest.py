@@ -127,18 +127,6 @@ FRAME_RATES = [
 def frame_rate_defs(request):
     flt_val, frac_val = request.param
     return {'float':flt_val, 'fraction':frac_val}
-    float_vals = [24., 25., 29.97, 30., 59.94, 60.]
-    fraction_vals = [
-        Fraction(24, 1),
-        Fraction(25, 1),
-        Fraction(30000, 1001),
-        Fraction(30, 1),
-        Fraction(60000, 1001),
-        Fraction(60, 1),
-    ]
-    return dict({
-        'floats':float_vals, 'fractions':fraction_vals
-    })
 
 @pytest.fixture
 def clip_format_defs():
