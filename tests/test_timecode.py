@@ -27,6 +27,7 @@ def test_timecode(frame_rate_defs):
         frame_format = timecode.FrameFormat(rate=frame_rate, drop_frame=df)
         start_tc = timecode.Timecode(frame_format=frame_format)
         tc = None
+        tc3 = timecode.Timecode(frame_format=frame_format)
         listener = None
         next_tc = None
         prev_tc = None
@@ -44,6 +45,11 @@ def test_timecode(frame_rate_defs):
                 assert str(next_tc) == str(tc)
 
             assert tc.total_frames == frame_count
+
+            tc3.set_from_string(str(tc))
+
+            assert [o.value for o in tc3.get_hmsf()] == [o.value for o in tc.get_hmsf()]
+            assert str(tc3) == str(tc)
 
             if frac_val.denominator == 1:
                 dt = tc.datetime

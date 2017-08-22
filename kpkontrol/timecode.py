@@ -67,6 +67,12 @@ class Timecode(Frame, ObjectBase):
         super(Timecode, self).set(**kwargs)
         if self.value == prev:
             self.emit('on_change', obj=self)
+    def set_from_string(self, tc_str):
+        if self.frame_format.drop_frame:
+            tc_str = ':'.join(tc_str.split(';'))
+        hmsf = [int(v) for v in tc_str.split(':')]
+        keys = ['hours', 'minutes', 'seconds', 'frames']
+        self.set(**{k:v for k, v in zip(keys, hmsf)})
     def __add__(self, other):
         obj = self.copy()
         if isinstance(other, Timecode):
