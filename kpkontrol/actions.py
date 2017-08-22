@@ -153,6 +153,11 @@ class ListenForEvents(Action):
         params = {}
         data = r.json()
         for d in data:
+            if 'services' in d:
+                param = self.all_parameters['by_id']['eParamID_NetworkServices']
+                _d = {'parameter':param, 'value':d['services']}
+                params[param.id] = _d
+                continue
             if 'param_id' not in d:
                 continue
             if 'str_value' not in d:
