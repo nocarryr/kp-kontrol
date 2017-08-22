@@ -141,6 +141,31 @@ def frame_rate_defs(request):
     })
 
 @pytest.fixture
+def clip_format_defs():
+    field_fmts = ['i', 'p', 'PsF']
+    resolutions = [
+        (720, 486), (720, 576), (1280, 720), (1920, 1080), (2048, 1080),
+        (3840, 2160), (4096, 2160),
+    ]
+    defs = []
+    for fr_flt, fr_frac in FRAME_RATES:
+        for field_fmt in field_fmts:
+            for res in resolutions:
+                w, h = res
+                d = dict(
+                    width=w,
+                    height=h,
+                    interlaced=field_fmt=='i',
+                    field_fmt=field_fmt,
+                    rate_float=fr_flt,
+                    rate_fraction=fr_frac,
+                )
+                fmt_str = '{width}x{height}{field_fmt} {rate_float}'.format(**d)
+                d['format_string'] = fmt_str
+                defs.append(d)
+    return defs
+
+@pytest.fixture
 def parameter_test_data():
     data = dict(
         param_id='eParamID_Foo',

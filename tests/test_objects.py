@@ -79,3 +79,17 @@ def test_enum_parameter(parameter_test_data):
         assert param.enum_items_by_value[i] == param.item_from_value(i) == item
 
         assert param.format_value(item.value) == param.format_value(item.name) == item.name
+
+def test_clip_format(clip_format_defs):
+    for d in clip_format_defs:
+        frame_rate = timecode.FrameRate(d['rate_fraction'].numerator, d['rate_fraction'].denominator)
+        d['frame_rate'] = frame_rate
+
+        clip_fmt1 = objects.ClipFormat(**d)
+        clip_fmt2 = objects.ClipFormat.from_string(d['format_string'])
+
+        assert str(clip_fmt1) == str(clip_fmt2)
+        assert clip_fmt1.width == clip_fmt2.width == d['width']
+        assert clip_fmt1.height == clip_fmt2.height == d['height']
+        assert clip_fmt1.interlaced is clip_fmt2.interlaced is d['interlaced']
+        assert clip_fmt1.frame_rate == clip_fmt2.frame_rate == frame_rate

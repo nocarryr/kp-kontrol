@@ -179,6 +179,23 @@ class ClipFormat(ObjectBase):
         kwargs['frame_rate'] = FrameRate.from_float(data['framerate'])
         kwargs['interlaced'] = data['interlace'] == '1'
         return cls(**kwargs)
+    @classmethod
+    def from_string(cls, s):
+        kwargs = {}
+        w, s = s.split('x')
+        kwargs['width'] = int(w)
+        h, fr = s.strip(' ').split(' ')
+        if h.endswith('i'):
+            kwargs['interlaced'] = True
+            kwargs['height'] = int(h.rstrip('i'))
+        elif h.endswith('p'):
+            kwargs['interlaced'] = False
+            kwargs['height'] = int(h.rstrip('p'))
+        elif h.endswith('PsF'):
+            kwargs['interlaced'] = False
+            kwargs['height'] = int(h.rstrip('PsF'))
+        kwargs['frame_rate'] = FrameRate.from_float(fr)
+        return cls(**kwargs)
     def __repr__(self):
         return '<{self.__class__.__name__}: {self}>'.format(self=self)
     def __str__(self):
