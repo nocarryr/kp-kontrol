@@ -17,7 +17,7 @@ def test_timecode(frame_rate_defs):
 
     frame_rate = timecode.FrameRate(frac_val.numerator, frac_val.denominator)
 
-    if frac_val.denominator == 1001:
+    if frac_val.denominator == 1001 and frac_val.numerator in [30000, 60000]:
         df_flags = [True, False]
     else:
         df_flags = [False]

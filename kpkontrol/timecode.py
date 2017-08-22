@@ -1,8 +1,28 @@
 import datetime
 import numbers
 
-from pyltc.frames import FrameRate, FrameFormat, Frame
+from pyltc.frames import FrameRate as _FrameRate
+from pyltc.frames import FrameFormat, Frame
 from kpkontrol.base import ObjectBase
+
+class FrameRate(_FrameRate):
+    defaults = {
+        23.98:(24000, 1001),
+        24:(24, 1),
+        25:(25, 1),
+        29.97:(30000, 1001),
+        30:(30, 1),
+        50:(50, 1),
+        59.94:(60000, 1001),
+        60:(60, 1),
+        119.88:(120000, 1001),
+        120:(120, 1),
+    }
+    @classmethod
+    def from_float(cls, value):
+        if not isinstance(value, numbers.Number):
+            value = float(value)
+        return super(FrameRate, cls).from_float(value)
 
 class Timecode(Frame, ObjectBase):
     _events_ = ['on_change']

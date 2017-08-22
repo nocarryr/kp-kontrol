@@ -111,12 +111,16 @@ def kp_http_server():
     server_thread.stop()
 
 FRAME_RATES = [
+    (23.98, Fraction(24000, 1001)),
     (24., Fraction(24, 1)),
     (25., Fraction(25, 1)),
     (29.97, Fraction(30000, 1001)),
     (30., Fraction(30, 1)),
+    (50., Fraction(50, 1)),
     (59.94, Fraction(60000, 1001)),
     (60., Fraction(60, 1)),
+    (119.88, Fraction(120000, 1001)),
+    (120., Fraction(120, 1)),
 ]
 
 @pytest.fixture(params=FRAME_RATES)

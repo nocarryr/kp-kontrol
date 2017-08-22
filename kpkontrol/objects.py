@@ -176,14 +176,7 @@ class ClipFormat(ObjectBase):
             height=int(data['height']),
             fourcc=data['fourcc'],
         )
-        fr = data['framerate']
-        if fr == '29.97':
-            fr = FrameRate(30000, 1001)
-        elif fr == '59.94':
-            fr = FrameRate(60000, 1001)
-        else:
-            fr = FrameRate(int(fr), 1)
-        kwargs['frame_rate'] = fr
+        kwargs['frame_rate'] = FrameRate.from_float(data['framerate'])
         kwargs['interlaced'] = data['interlace'] == '1'
         return cls(**kwargs)
     def __repr__(self):
