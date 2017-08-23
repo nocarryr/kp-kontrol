@@ -5,11 +5,23 @@ import re
 from kpkontrol.base import ObjectBase
 
 def parse_crap_json(s):
+    def split_quotes(_s):
+        pre = None
+        while '"' in _s:
+            start, sep, _s = _s.partition('"')
+            if pre is None:
+                pre = start
+            else:
+                yield pre, '"{}"'.format(start)
+                pre = None
+        yield _s, ''
+    s = ''.join(s.splitlines()).strip(';')
+    cleaned = ''
     c = re.compile('([a-zA-Z_]+):')
-    s = ''.join(s.splitlines())
-    s = s.strip(';')
-    s = c.sub(r'"\1":', s)
-    return json.loads(s)
+    for non_quoted, quoted in split_quotes(s):
+        non_quoted = c.sub(r'"\1":', non_quoted)
+        cleaned = ''.join([cleaned, non_quoted, quoted])
+    return json.loads(cleaned)
 
 
 class ParameterBase(ObjectBase):
