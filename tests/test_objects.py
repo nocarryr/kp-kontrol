@@ -1,13 +1,16 @@
 from kpkontrol import actions, objects, timecode
+from kpkontrol.parameters import (
+    ParameterBase, EnumParameter, ParameterEnumItem, IntParameter, StrParameter,
+)
 
 def get_base_attr_data():
-    all_names = set(objects.ParameterBase._ParameterBase__attribute_names).copy()
-    all_defaults = objects.ParameterBase._ParameterBase__attribute_defaults.copy()
+    all_names = set(ParameterBase._ParameterBase__attribute_names).copy()
+    all_defaults = ParameterBase._ParameterBase__attribute_defaults.copy()
     return all_names, all_defaults
 
 def test_int_parameter(parameter_test_data):
     all_names, all_defaults = get_base_attr_data()
-    all_names |= set(objects.IntParameter._IntParameter__attribute_names)
+    all_names |= set(IntParameter._IntParameter__attribute_names)
 
     parameter_test_data['param_type'] = 'integer'
     parameter_test_data['string_attributes'].extend([
@@ -17,9 +20,9 @@ def test_int_parameter(parameter_test_data):
         'value':'things'},
     ])
 
-    param = objects.ParameterBase.from_json(parameter_test_data)
+    param = ParameterBase.from_json(parameter_test_data)
 
-    assert isinstance(param, objects.IntParameter)
+    assert isinstance(param, IntParameter)
 
     assert param.attribute_names_ == all_names
 
@@ -40,7 +43,7 @@ def test_int_parameter(parameter_test_data):
 
 def test_enum_parameter(parameter_test_data):
     all_names, all_defaults = get_base_attr_data()
-    all_names |= set(objects.EnumParameter._EnumParameter__attribute_names)
+    all_names |= set(EnumParameter._EnumParameter__attribute_names)
 
     parameter_test_data['param_type'] = 'enum'
     parameter_test_data['enum_values'] = [
@@ -52,9 +55,9 @@ def test_enum_parameter(parameter_test_data):
         'text':'Baz'},
     ]
 
-    param = objects.ParameterBase.from_json(parameter_test_data)
+    param = ParameterBase.from_json(parameter_test_data)
 
-    assert isinstance(param, objects.EnumParameter)
+    assert isinstance(param, EnumParameter)
 
     assert param.attribute_names_ == all_names
 
@@ -71,7 +74,7 @@ def test_enum_parameter(parameter_test_data):
         assert item_name in param.enum_items
 
         item = param.enum_items[item_name]
-        assert isinstance(item, objects.ParameterEnumItem)
+        assert isinstance(item, ParameterEnumItem)
         assert item.attribute_names_ == set(['name', 'description', 'value'])
 
         assert item.description == item_name.title()

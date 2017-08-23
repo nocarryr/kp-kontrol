@@ -6,9 +6,10 @@ except ImportError:
 
 import requests
 
-from kpkontrol.objects import (
-    ParameterBase, EnumParameter, IntParameter, StrParameter, Clip,
+from kpkontrol.parameters import (
+    ParameterBase, EnumParameter, IntParameter, StrParameter,
 )
+from kpkontrol.objects import Clip
 
 class RequestError(Exception):
     def __init__(self, req):
