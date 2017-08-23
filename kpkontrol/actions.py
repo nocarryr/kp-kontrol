@@ -55,14 +55,17 @@ class Action(object):
     def full_url(self):
         return self.build_url()
     def build_url(self):
-        sp_tpl = ('http', self.netloc, self.url_path, self.query_string, '')
+        if self.method == 'get':
+            sp_tpl = ('http', self.netloc, self.url_path, self.query_string, '')
+        elif self.method == 'post':
+            sp_tpl = ('http', self.netloc, self.url_path, '', '')
         return urlunsplit(sp_tpl)
     def build_request(self):
         url = self.full_url
         if self.method == 'get':
             r = requests.get(url)
         elif self.method == 'post':
-            r = requests.post(url)
+            r = requests.post(url, self.query_params)
         else:
             raise Exception('{} method not supported'.format(self.method))
         if not r.ok:
@@ -112,6 +115,7 @@ class GetParameter(Action):
 
 class SetParameter(Action):
     _url_path = 'config'
+    method = 'post'
     def __init__(self, netloc, **kwargs):
         self.parameter = kwargs.get('parameter')
         self.value = kwargs.get('value')
