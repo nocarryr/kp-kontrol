@@ -108,6 +108,8 @@ class EnumParameter(ParameterBase):
         return str(item)
     def parse_response(self, r):
         parsed = super(EnumParameter, self).parse_response(r)
+        if not isinstance(parsed, list):
+            parsed = [parsed]
         for d in parsed:
             if d.get('selected') == 'true':
                 return self.enum_items[d['text']]
