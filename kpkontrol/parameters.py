@@ -112,7 +112,11 @@ class EnumParameter(ParameterBase):
             parsed = [parsed]
         for d in parsed:
             if d.get('selected') == 'true':
-                return self.enum_items[d['text']]
+                try:
+                    item = self.enum_items[d['text']]
+                except KeyError:
+                    item = self.enum_items[d['short_text']]
+                return item
 
 class ParameterEnumItem(ObjectBase):
     __attribute_names = [
