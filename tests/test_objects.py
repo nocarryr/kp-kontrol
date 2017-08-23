@@ -1,13 +1,16 @@
 from kpkontrol import actions, objects, timecode
+from kpkontrol.parameters import (
+    ParameterBase, EnumParameter, ParameterEnumItem, IntParameter, StrParameter,
+)
 
 def get_base_attr_data():
-    all_names = set(objects.ParameterBase._ParameterBase__attribute_names).copy()
-    all_defaults = objects.ParameterBase._ParameterBase__attribute_defaults.copy()
+    all_names = set(ParameterBase._ParameterBase__attribute_names).copy()
+    all_defaults = ParameterBase._ParameterBase__attribute_defaults.copy()
     return all_names, all_defaults
 
 def test_int_parameter(parameter_test_data):
     all_names, all_defaults = get_base_attr_data()
-    all_names |= set(objects.IntParameter._IntParameter__attribute_names)
+    all_names |= set(IntParameter._IntParameter__attribute_names)
 
     parameter_test_data['param_type'] = 'integer'
     parameter_test_data['string_attributes'].extend([
@@ -17,9 +20,9 @@ def test_int_parameter(parameter_test_data):
         'value':'things'},
     ])
 
-    param = objects.ParameterBase.from_json(parameter_test_data)
+    param = ParameterBase.from_json(parameter_test_data)
 
-    assert isinstance(param, objects.IntParameter)
+    assert isinstance(param, IntParameter)
 
     assert param.attribute_names_ == all_names
 
@@ -40,7 +43,7 @@ def test_int_parameter(parameter_test_data):
 
 def test_enum_parameter(parameter_test_data):
     all_names, all_defaults = get_base_attr_data()
-    all_names |= set(objects.EnumParameter._EnumParameter__attribute_names)
+    all_names |= set(EnumParameter._EnumParameter__attribute_names)
 
     parameter_test_data['param_type'] = 'enum'
     parameter_test_data['enum_values'] = [
@@ -52,9 +55,9 @@ def test_enum_parameter(parameter_test_data):
         'text':'Baz'},
     ]
 
-    param = objects.ParameterBase.from_json(parameter_test_data)
+    param = ParameterBase.from_json(parameter_test_data)
 
-    assert isinstance(param, objects.EnumParameter)
+    assert isinstance(param, EnumParameter)
 
     assert param.attribute_names_ == all_names
 
@@ -71,7 +74,7 @@ def test_enum_parameter(parameter_test_data):
         assert item_name in param.enum_items
 
         item = param.enum_items[item_name]
-        assert isinstance(item, objects.ParameterEnumItem)
+        assert isinstance(item, ParameterEnumItem)
         assert item.attribute_names_ == set(['name', 'description', 'value'])
 
         assert item.description == item_name.title()
@@ -79,3 +82,17 @@ def test_enum_parameter(parameter_test_data):
         assert param.enum_items_by_value[i] == param.item_from_value(i) == item
 
         assert param.format_value(item.value) == param.format_value(item.name) == item.name
+
+def test_clip_format(clip_format_defs):
+    for d in clip_format_defs:
+        frame_rate = timecode.FrameRate(d['rate_fraction'].numerator, d['rate_fraction'].denominator)
+        d['frame_rate'] = frame_rate
+
+        clip_fmt1 = objects.ClipFormat(**d)
+        clip_fmt2 = objects.ClipFormat.from_string(d['format_string'])
+
+        assert str(clip_fmt1) == str(clip_fmt2)
+        assert clip_fmt1.width == clip_fmt2.width == d['width']
+        assert clip_fmt1.height == clip_fmt2.height == d['height']
+        assert clip_fmt1.interlaced is clip_fmt2.interlaced is d['interlaced']
+        assert clip_fmt1.frame_rate == clip_fmt2.frame_rate == frame_rate

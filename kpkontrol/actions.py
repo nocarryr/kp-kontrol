@@ -6,9 +6,10 @@ except ImportError:
 
 import requests
 
-from kpkontrol.objects import (
-    ParameterBase, EnumParameter, IntParameter, StrParameter, Clip,
+from kpkontrol.parameters import (
+    ParameterBase, EnumParameter, IntParameter, StrParameter,
 )
+from kpkontrol.objects import Clip
 
 class RequestError(Exception):
     def __init__(self, req):
@@ -153,6 +154,11 @@ class ListenForEvents(Action):
         params = {}
         data = r.json()
         for d in data:
+            if 'services' in d:
+                param = self.all_parameters['by_id']['eParamID_NetworkServices']
+                _d = {'parameter':param, 'value':d['services']}
+                params[param.id] = _d
+                continue
             if 'param_id' not in d:
                 continue
             if 'str_value' not in d:
@@ -160,9 +166,9 @@ class ListenForEvents(Action):
             param = self.all_parameters['by_id'][d['param_id']]
             _d = {'parameter':param}
             if isinstance(param, IntParameter):
-                _d['value'] = d['int_value']
+                _d['value'] = int(d['int_value'])
             elif isinstance(param, EnumParameter):
-                _d['value'] = param.enum_items[d['int_value']]
+                _d['value'] = param.enum_items[int(d['int_value'])]
             else:
                 _d['value'] = d['str_value']
             params[param.id] = _d

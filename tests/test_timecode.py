@@ -5,9 +5,19 @@ def test_timecode(frame_rate_defs):
     flt_val = frame_rate_defs['float']
     frac_val = frame_rate_defs['fraction']
 
+    class Listener(object):
+        def __init__(self, tc):
+            self.tc = tc
+            self.last_value = str(tc)
+            tc.bind(on_change=self.on_tc_change)
+        def on_tc_change(self, *args, **kwargs):
+            tc = kwargs.get('obj')
+            assert tc is self.tc
+            self.last_value = str(tc)
+
     frame_rate = timecode.FrameRate(frac_val.numerator, frac_val.denominator)
 
-    if frac_val.denominator == 1001:
+    if frac_val.denominator == 1001 and frac_val.numerator in [30000, 60000]:
         df_flags = [True, False]
     else:
         df_flags = [False]
@@ -17,15 +27,29 @@ def test_timecode(frame_rate_defs):
         frame_format = timecode.FrameFormat(rate=frame_rate, drop_frame=df)
         start_tc = timecode.Timecode(frame_format=frame_format)
         tc = None
+        tc3 = timecode.Timecode(frame_format=frame_format)
+        listener = None
+        next_tc = None
         prev_tc = None
         for frame_count in range(1, 43202):
             fr_secs = float(frame_count / frame_rate)
             if tc is None:
                 tc = timecode.Timecode.from_frames(frame_count, frame_format)
+                listener = Listener(tc)
             else:
-                tc = tc + (frame_count - tc.total_frames)
+                tc += frame_count - tc.total_frames
+                assert listener.last_value == str(tc)
+
+            if next_tc is not None:
+                assert next_tc.total_frames == tc.total_frames
+                assert str(next_tc) == str(tc)
 
             assert tc.total_frames == frame_count
+
+            tc3.set_from_string(str(tc))
+
+            assert [o.value for o in tc3.get_hmsf()] == [o.value for o in tc.get_hmsf()]
+            assert str(tc3) == str(tc)
 
             if frac_val.denominator == 1:
                 dt = tc.datetime
@@ -42,6 +66,8 @@ def test_timecode(frame_rate_defs):
                 assert tc2.total_frames == prev_tc.total_frames
                 assert str(tc2) == str(prev_tc)
 
+            next_tc = tc + 1
+
             assert fr_secs == pytest.approx(tc.total_seconds, rel=1e-1)
 
 
@@ -50,4 +76,33 @@ def test_timecode(frame_rate_defs):
             # assert tc_delta.total_frames == tc.total_frames == frame_count
             # assert tc_delta.total_seconds == tc.total_seconds
 
-            prev_tc = tc
+            prev_tc = tc.copy()
+
+def test_timecode_set(frame_rate_defs):
+    flt_val = frame_rate_defs['float']
+    frac_val = frame_rate_defs['fraction']
+
+    class Listener(object):
+        def __init__(self, tc):
+            self.tc = tc
+            self.last_value = str(tc)
+            tc.bind(on_change=self.on_tc_change)
+        def on_tc_change(self, *args, **kwargs):
+            tc = kwargs.get('obj')
+            assert tc is self.tc
+            self.last_value = str(tc)
+
+    frame_rate = timecode.FrameRate(frac_val.numerator, frac_val.denominator)
+    frame_format = timecode.FrameFormat(rate=frame_rate)
+
+    tc = timecode.Timecode(frame_format=frame_format)
+    listener = Listener(tc)
+
+    tc_counter = timecode.Timecode(frame_format=frame_format)
+    hmsf_keys = ['hours', 'minutes', 'seconds', 'frames']
+    while True:
+        tc.set(**{k:v.value for k, v in zip(hmsf_keys, tc_counter.get_hmsf())})
+        assert listener.last_value == str(tc_counter) == str(tc)
+        tc_counter += 1
+        if tc_counter.hour.value >= 1 and tc_counter.minute.value > 0:
+            break
