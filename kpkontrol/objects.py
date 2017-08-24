@@ -25,7 +25,10 @@ class DeviceParameter(ObjectBase):
     def id(self):
         return self.parameter.id
     def set_value(self, value):
-        self.device.set_parameter(self.parameter, value)
+        response = self.device.set_parameter(self.parameter, value)
+        if response == value:
+            self.value = value
+        return response
     def get_value(self):
         self.value = self.device.get_parameter(self.parameter)
     def __repr__(self):
@@ -46,7 +49,10 @@ class DeviceEnumParameter(DeviceParameter):
     def set_value(self, value):
         key = self.parameter.format_value(value)
         param = self.enum_items[key]
-        self.device.set_parameter(self.parameter, param.value)
+        response = self.device.set_parameter(self.parameter, param.value)
+        if isinstance(response, ParameterEnumItem):
+            self.value = self.enum_items[response.name]
+        return response
     def get_value(self):
         value = self.device.get_parameter(self.parameter)
         if value is None:

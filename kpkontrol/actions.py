@@ -125,7 +125,7 @@ class SetParameter(Action):
         kwargs['newValue'] = self.value
         return super(SetParameter, self).build_query_params(**kwargs)
     def process_response(self, r):
-        return r.content
+        return self.parameter.parse_response(r)
 
 class Connect(Action):
     _url_path = 'json'

@@ -108,6 +108,10 @@ class EnumParameter(ParameterBase):
         return str(item)
     def parse_response(self, r):
         parsed = super(EnumParameter, self).parse_response(r)
+        if isinstance(parsed, dict) and 'value_name' in parsed:
+            item = self.enum_items.get(parsed['value_name'])
+            if item.value == int(parsed.get('value', '-1')):
+                return item
         if not isinstance(parsed, list):
             parsed = [parsed]
         for d in parsed:
