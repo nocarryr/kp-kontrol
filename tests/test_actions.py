@@ -53,7 +53,7 @@ def test_get_parameters(kp_http_server, all_parameter_defs):
             assert isinstance(value, parameters.ParameterEnumItem)
             assert value.value == all_parameters['by_id'][param.id].default_value == all_parameter_defs[param.id]['default_value']
         else:
-            assert value == param.default_value == all_parameter_defs[param.id]['default_value']
+            assert value == all_parameter_defs[param.id].get('_value', all_parameter_defs[param.id]['default_value'])
 
             if param.param_type == 'string':
                 assert isinstance(value, str)
@@ -66,6 +66,10 @@ def test_get_parameters(kp_http_server, all_parameter_defs):
                 response = action()
                 assert response is item
 
+                action2 = actions.GetParameter(host_address, parameter=param)
+                response2 = action2()
+                assert response2 is response
+
         else:
             action = actions.SetParameter(host_address, parameter=param, value='42')
             response = action()
@@ -73,3 +77,7 @@ def test_get_parameters(kp_http_server, all_parameter_defs):
                 assert response == '42'
             else:
                 assert response == 42
+
+            action2 = actions.GetParameter(host_address, parameter=param)
+            response2 = action2()
+            assert response2 == response

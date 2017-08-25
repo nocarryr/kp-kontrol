@@ -32,20 +32,30 @@ def get_all_parameter_defs(deserialize=True):
 PARAMETER_DEFS = get_all_parameter_defs()
 
 @pytest.fixture
-def all_parameter_defs():
+def all_parameter_defs(request):
+    def clean_values():
+        for key in PARAMETER_DEFS.keys():
+            if '_value' in PARAMETER_DEFS[key]:
+                del PARAMETER_DEFS[key]['_value']
+    request.addfinalizer(clean_values)
     return PARAMETER_DEFS
 
 def get_parameter_response_crap_json(param_id, value=None):
     param = PARAMETER_DEFS[param_id]
-    if value is None:
-        value = param['default_value']
+    if value is not None:
+        if value.isdigit() and param['param_type'] == 'enum':
+            value = int(value)
+        PARAMETER_DEFS[param_id]['_value'] = value
+    else:
+        value = param.get('_value', param['default_value'])
     resp = ['[']
     if param['param_type'] == 'enum':
         for item in param['enum_values']:
-            if int(item['value']) == int(value):
+            selected = 'false'
+            if isinstance(value, str) and value == item['short_text']:
                 selected = 'true'
-            else:
-                selected = 'false'
+            if isinstance(value, int) and value == item['value']:
+                selected = 'true'
             item = item.copy()
             item['selected'] = str(selected).lower()
             s = 'value:"{value}", text:"{text}", short_text:"{short_text}", selected:"{selected}"'.format(**item)
@@ -63,15 +73,22 @@ def get_parameter_response_crap_json(param_id, value=None):
 
 def get_parameter_response_real_json(param_id, value=None):
     param = PARAMETER_DEFS[param_id]
-    if value is None:
-        value = param['default_value']
+    if value is not None:
+        if value.isdigit() and param['param_type'] == 'enum':
+            value = int(value)
+        PARAMETER_DEFS[param_id]['_value'] = value
+    else:
+        value = param.get('_value', param['default_value'])
     data = {'value':None, 'str_value':None}
     if param['param_type'] == 'enum':
         for item in param['enum_values']:
-            if item['value'] == param['default_value']:
-                data = {'value':item['value'], 'value_name':item['short_text']}
+            if isinstance(value, str) and value != item['short_text']:
+                continue
+            if isinstance(value, int) and value != item['value']:
+                continue
+            data = {'value':item['value'], 'value_name':item['short_text']}
     else:
-        data = {k:param['default_value'] for k in ['value', 'str_value']}
+        data = {k:value for k in ['value', 'str_value']}
     return json.dumps(data)
 
 
