@@ -62,8 +62,8 @@ class ParameterBase(ObjectBase):
         return cls(**kwargs)
     def format_value(self, value):
         return str(value)
-    def parse_response(self, r):
-        s = r.content
+    async def parse_response(self, r):
+        s = await r.text()
         if isinstance(s, bytes):
             s = s.decode('UTF-8')
         parsed = parse_crap_json(s)
@@ -106,8 +106,8 @@ class EnumParameter(ParameterBase):
         else:
             item = self.enum_items[value]
         return str(item)
-    def parse_response(self, r):
-        parsed = super(EnumParameter, self).parse_response(r)
+    async def parse_response(self, r):
+        parsed = await super(EnumParameter, self).parse_response(r)
         if isinstance(parsed, dict) and 'value_name' in parsed:
             item = self.enum_items.get(parsed['value_name'])
             if item.value == int(parsed.get('value', '-1')):
@@ -160,8 +160,8 @@ class IntParameter(ParameterBase):
         else:
             suffix = self.value_suffix_plural
         return '{} {}'.format(value, suffix)
-    def parse_response(self, r):
-        parsed = super(IntParameter, self).parse_response(r)
+    async def parse_response(self, r):
+        parsed = await super(IntParameter, self).parse_response(r)
         return int(parsed['value'])
 
 class StrParameter(ParameterBase):
@@ -172,8 +172,8 @@ class StrParameter(ParameterBase):
     def _from_json(cls, data, **kwargs):
         kwargs.update({k:data[k] for k in ['min_length', 'max_length']})
         return super(StrParameter, cls)._from_json(data, **kwargs)
-    def parse_response(self, r):
-        parsed = super(StrParameter, self).parse_response(r)
+    async def parse_response(self, r):
+        parsed = await super(StrParameter, self).parse_response(r)
         return str(parsed['value'])
 
 class OctetParameter(ParameterBase):

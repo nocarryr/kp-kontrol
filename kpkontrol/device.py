@@ -1,3 +1,5 @@
+import asyncio
+
 from pydispatch.properties import (
     Property, DictProperty, ListProperty
 )
@@ -27,22 +29,51 @@ class KpDevice(ObjectBase):
     def __init__(self, **kwargs):
         super(KpDevice, self).__init__(**kwargs)
         self.all_parameters = {}
+        self.loop = kwargs.get('loop')
+        self.session = kwargs.get('session')
+        if self.loop is None:
+            self.loop = asyncio.get_event_loop()
         self.transport = KpTransport(device=self)
-        self.connect()
+    @classmethod
+    async def create(cls, **kwargs):
+        obj = cls(**kwargs)
+        await obj.connect()
+    @property
+    def session(self):
+        return getattr(self, '_session', None)
+    @session.setter
+    def session(self, value):
+        if value == self.session:
+            return
+        self._session = value
+        if value is not None:
+            self.loop = value._loop
     @property
     def listen_action(self):
         a = getattr(self, '_listen_action', None)
         if a is None:
             all_parameters = {'by_id':self.all_parameters}
-            a = self._listen_action = actions.ListenForEvents(self.host_address, all_parameters=all_parameters)
+            a = self._listen_action = actions.ListenForEvents(
+                self.host_address,
+                all_parameters=all_parameters,
+                session=self.session,
+                loop=self.loop,
+            )
         return a
-    def connect(self):
-        self._get_all_parameters()
-        self.update_clips()
+    async def connect(self):
+        await self._get_all_parameters()
+        await self.update_clips()
         self.connected = True
-    def update_clips(self):
-        a = actions.GetClips(self.host_address)
-        clips = a()
+    async def _do_action(self, action_cls, **kwargs):
+        kwargs.setdefault('session', self.session)
+        kwargs.setdefault('loop', self.loop)
+        a = action_cls(self.host_address, **kwargs)
+        response = await a()
+        if self.session is None:
+            self.session = a.session
+        return response
+    async def update_clips(self):
+        clips = await self._do_action(actions.GetClips)
         for clip in clips:
             if clip.name not in self.clips:
                 self.clips[clip.name] = clip
@@ -58,23 +89,22 @@ class KpDevice(ObjectBase):
                     if getattr(self.clips[clip.name], attr) == val:
                         continue
                     setattr(self.clips[clip.name], attr, val)
-        current = self.get_parameter('eParamID_CurrentClip')
+        current = await self.get_parameter('eParamID_CurrentClip')
         if current in self.clips:
             self.transport.clip = self.clips[current]
-    def listen_for_events(self):
-        self._get_all_parameters()
+    async def listen_for_events(self):
+        await self._get_all_parameters()
         a = self.listen_action
-        events = a()
+        events = await a()
         print(events)
         self.emit('on_events_received', self, events)
         for param_id, data in events.items():
             device_param = self.all_parameters[param_id]
             device_param.value = data['value']
-    def _get_all_parameters(self):
+    async def _get_all_parameters(self):
         if self.parameters_received:
             return
-        a = actions.GetAllParameters(self.host_address)
-        params = a()
+        params = await self._do_action(actions.GetAllParameters)
         for param_id, param in params['by_id'].items():
             if param_id in self.all_parameters:
                 continue
@@ -82,33 +112,38 @@ class KpDevice(ObjectBase):
             self.all_parameters[param_id] = device_param
             device_param.bind(value=self._on_device_parameter_value)
         self.parameters_received = True
-        self.get_all_parameter_values()
-    def get_all_parameter_values(self):
+        await self.get_all_parameter_values()
+    async def get_all_parameter_values(self):
         for device_param in self.all_parameters.values():
             if device_param.parameter.param_type == 'data':
                 continue
             if device_param.id == 'eParamID_MACAddress':
                 continue
-            device_param.get_value()
+            await device_param.get_value()
     def _on_device_parameter_value(self, instance, value, **kwargs):
         if instance.id == 'eParamID_SysName':
             self.name = value
         elif instance.id == 'eParamID_FormattedSerialNumber':
             self.serial_number = value
         self.emit('on_parameter_value', instance, value, **kwargs)
-    def _get_parameter_object(self, parameter):
-        self._get_all_parameters()
+    async def _get_parameter_object(self, parameter):
+        await self._get_all_parameters()
         if isinstance(parameter, (ParameterBase, DeviceParameter)):
             return self.all_parameters[parameter.id]
         return self.all_parameters[parameter]
-    def get_parameter(self, parameter):
-        parameter = self._get_parameter_object(parameter).parameter
-        a = actions.GetParameter(self.host_address, parameter=parameter)
-        return a()
-    def set_parameter(self, parameter, value):
-        parameter = self._get_parameter_object(parameter).parameter
-        a = actions.SetParameter(self.host_address, parameter=parameter, value=value)
-        return a()
+    async def get_parameter(self, parameter):
+        parameter = await self._get_parameter_object(parameter)
+        return await self._do_action(
+            actions.GetParameter,
+            parameter=parameter.parameter,
+        )
+    async def set_parameter(self, parameter, value):
+        parameter = await self._get_parameter_object(parameter)
+        return await self._do_action(
+            actions.SetParameter,
+            parameter=parameter.parameter,
+            value=value,
+        )
 
 class KpTransport(ObjectBase):
     active = Property(False)
@@ -135,6 +170,9 @@ class KpTransport(ObjectBase):
         super(KpTransport, self).__init__(**kwargs)
         self.device.bind(on_parameter_value=self.on_parameter_value)
     @property
+    def loop(self):
+        return self.device.loop
+    @property
     def timecode_param(self):
         p = getattr(self, '_timecode_param', None)
         if p is None:
@@ -156,35 +194,37 @@ class KpTransport(ObjectBase):
             all_params = self.device.all_parameters
             p = self._transport_param_set = all_params.get('eParamID_TransportCommand')
         return p
-    def set_transport(self, value):
+    async def set_transport_async(self, value):
         p = self.transport_param_set
         if p is None:
             return
-        p.set_value(value)
-        self.transport_param_get.get_value()
-    def go_to_clip(self, clip):
+        await p.set_value(value)
+        await self.transport_param_get.get_value()
+    def set_transport(self, value):
+        return asyncio.ensure_future(self.set_transport_async(value), loop=self.loop)
+    async def go_to_clip(self, clip):
         if not isinstance(clip, Clip):
             clip = self.device.clips[clip]
         param = self.device.all_parameters['eParamID_GoToClip']
-        param.set_value(clip.name)
+        await param.set_value(clip.name)
         self.clip = clip
-    def play(self):
-        self.set_transport('Play Command')
-    def record(self):
-        self.set_transport('Record Command')
-    def stop(self):
-        self.set_transport('Stop Command')
-    def shuttle_forward(self):
-        self.set_transport('Fast Forward')
-    def shuttle_reverse(self):
-        self.set_transport('Fast Reverse')
-    def step_forward(self, nframes=1):
+    async def play(self):
+        await self.set_transport_async('Play Command')
+    async def record(self):
+        await self.set_transport_async('Record Command')
+    async def stop(self):
+        await self.set_transport_async('Stop Command')
+    async def shuttle_forward(self):
+        await self.set_transport_async('Fast Forward')
+    async def shuttle_reverse(self):
+        await self.set_transport_async('Fast Reverse')
+    async def step_forward(self, nframes=1):
         while nframes > 0:
-            self.set_transport('Single Step Forward')
+            await self.set_transport_async('Single Step Forward')
             nframes -= 1
-    def step_reverse(self, nframes=1):
+    async def step_reverse(self, nframes=1):
         while nframes > 0:
-            self.set_transport('Single Step Reverse')
+            await self.set_transport_async('Single Step Reverse')
             nframes -= 1
     def on_clip(self, instance, clip, **kwargs):
         if clip is None:

@@ -1,19 +1,9 @@
-import sys
-import io
-import threading
-import shutil
+import asyncio
 from fractions import Fraction
-try:
-    from urllib import urlencode
-    from urlparse import urlunsplit, urlsplit, parse_qs
-    from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
-except ImportError:
-    from urllib.parse import urlencode, urlunsplit, urlsplit, parse_qs
-    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+from aiohttp import web
 
 import pytest
-
-PY3 = sys.version_info.major >= 3
 
 KP_RESPONSE_DATA = [
     {'url_path':'/clips',
@@ -43,72 +33,76 @@ KP_RESPONSE_DATA = [
 ]
 
 
-class KPHttpHandler(BaseHTTPRequestHandler):
-    def _get_data(self):
-        p = urlsplit(self.path)
-        path = p.path
-        if p.query:
-            query = parse_qs(p.query)
-        else:
-            query = None
+class KPHttpHandler(object):
+    def _get_data(self, request):
+        u = request.url
+        path = u.path
+        query = u.query
         for resp_data in KP_RESPONSE_DATA:
             if resp_data['url_path'] != path:
                 continue
-            if resp_data.get('query_params') and resp_data['query_params'] != query:
-                continue
+            if resp_data.get('query_params'):
+                if set(resp_data['query_params'].keys()) != set(query.keys()):
+                    continue
+                match = True
+                for key, val in resp_data['query_params'].items():
+                    if query.getall(key) != val:
+                        match = False
+                        break
+                if not match:
+                    continue
             return resp_data
         return None
-    def do_GET(self):
-        resp_data = self._get_data()
+    async def do_GET(self, request):
+        resp_data = self._get_data(request)
         if resp_data is None:
-            self.send_error(404, 'Not Found')
-            return None
-        r = ''.join(resp_data['response'].splitlines())
-        if PY3:
-            f = io.BytesIO()
-            f.write(bytes(r, 'UTF-8'))
-        else:
-            f = io.StringIO()
-            f.write(r.decode('UTF-8'))
-        length = f.tell()
-        f.seek(0)
-        self.send_response(200)
-        self.send_header("Content-type", 'text/javascript')
-        self.send_header("Content-Length", str(length))
-        self.end_headers()
-        try:
-            shutil.copyfileobj(f, self.wfile)
-        finally:
-            f.close()
+            raise web.HTTPNotFound(text='Not Found')
 
-class KPHttpServerThread(threading.Thread):
-    def __init__(self):
-        super(KPHttpServerThread, self).__init__()
-        self.running = threading.Event()
-        self.server = None
-        self.port = None
-    def run(self):
-        self.server = HTTPServer(('localhost', 0), KPHttpHandler)
-        self.port = self.server.server_port
+        r = ''.join(resp_data['response'].splitlines())
+        return web.Response(body=r, content_type='text/javascript')
+
+
+class KPHttpServer(object):
+    def __init__(self, *args, **kwargs):
+        pass
+    async def start(self, loop=None):
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        self.loop = loop
+        self.running = asyncio.Event()
+        self.run_coro = asyncio.ensure_future(self.run())
+        await self.running.wait()
+        self.host_address = '{self.host}:{self.port}'.format(self=self)
+        return self.host_address
+    async def run(self):
+        print(self.loop)
+        self.handler = KPHttpHandler()
+        self.app = web.Application(loop=self.loop)
+        for d in KP_RESPONSE_DATA:
+            self.app.router.add_route('*', d['url_path'], self.handler.do_GET)
+        self.w_server = web.Server(self.handler.do_GET)
+        self.server = await self.loop.create_server(self.w_server, '127.0.0.1', 0)
+        self.host, self.port = self.server.sockets[0].getsockname()
+
         self.running.set()
-        self.server.serve_forever()
-        self.running.clear()
-    def stop(self):
+        while self.running.is_set():
+            await asyncio.sleep(.1)
+
+        await self.w_server.shutdown()
+        self.server.close()
+        await self.server.wait_closed()
+        self.server = None
+    async def stop(self):
         if not self.running.is_set():
             return
-        if self.server is None:
-            return
-        self.server.shutdown()
-        self.server.server_close()
-        self.server = None
+        self.running.clear()
+        await self.run_coro
 
 @pytest.fixture
 def kp_http_server():
-    server_thread = KPHttpServerThread()
-    server_thread.start()
-    server_thread.running.wait()
-    yield 'localhost:{}'.format(server_thread.port)
-    server_thread.stop()
+    event_loop = asyncio.get_event_loop()
+    server = KPHttpServer(loop=event_loop)
+    return server
 
 FRAME_RATES = [
     (23.98, Fraction(24000, 1001)),

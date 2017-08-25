@@ -24,13 +24,13 @@ class DeviceParameter(ObjectBase):
     @property
     def id(self):
         return self.parameter.id
-    def set_value(self, value):
-        response = self.device.set_parameter(self.parameter, value)
+    async def set_value(self, value):
+        response = await self.device.set_parameter(self.parameter, value)
         if response == value:
             self.value = value
         return response
-    def get_value(self):
-        self.value = self.device.get_parameter(self.parameter)
+    async def get_value(self):
+        self.value = await self.device.get_parameter(self.parameter)
     def __repr__(self):
         return '<{self.__class__.__name__} {self.parameter}: {self.value}>'.format(self=self)
     def __str__(self):
@@ -46,15 +46,15 @@ class DeviceEnumParameter(DeviceParameter):
                 parameter_item=param_item,
             )
             self.enum_items[device_item.name] = device_item
-    def set_value(self, value):
+    async def set_value(self, value):
         key = self.parameter.format_value(value)
         param = self.enum_items[key]
-        response = self.device.set_parameter(self.parameter, param.value)
+        response = await self.device.set_parameter(self.parameter, param.value)
         if isinstance(response, ParameterEnumItem):
             self.value = self.enum_items[response.name]
         return response
-    def get_value(self):
-        value = self.device.get_parameter(self.parameter)
+    async def get_value(self):
+        value = await self.device.get_parameter(self.parameter)
         if value is None:
             return
         self.value = self.enum_items[value.name]
@@ -74,8 +74,8 @@ class DeviceEnumItem(ObjectBase):
     @property
     def value(self):
         return self.parameter_item.value
-    def set_active(self):
-        self.device_parameter.set_value(self.name)
+    async def set_active(self):
+        await self.device_parameter.set_value(self.name)
     def on_device_parameter_value(self, instance, value, **kwargs):
         self.active = value is self
     def __repr__(self):

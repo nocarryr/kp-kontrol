@@ -1,13 +1,25 @@
+import asyncio
 import datetime
 from fractions import Fraction
 
+import pytest
+
 from kpkontrol import actions, objects, timecode
 
-def test_get_clips(kp_http_server):
-    action = actions.GetClips(kp_http_server)
-    assert action.full_url == 'http://{}/clips?action=get_clips'.format(kp_http_server)
+@pytest.mark.asyncio
+async def test_get_clips(kp_http_server):
+    print('kp_http_server:', kp_http_server, type(kp_http_server))
+    await kp_http_server.start()
+    host_address = kp_http_server.host_address
 
-    results = action()
+    loop = asyncio.get_event_loop()
+
+    action = actions.GetClips(host_address)
+    assert action.full_url == 'http://{}/clips?action=get_clips'.format(host_address)
+
+    results = await action()
+    assert action.loop is loop is kp_http_server.loop
+
     assert isinstance(results, list)
     assert len(results) == 1
 
@@ -30,3 +42,5 @@ def test_get_clips(kp_http_server):
     assert str(clip.format) == '1920x1080i29.97'
     assert str(clip.start_timecode) == '18:25:06;12'
     assert str(clip.duration_tc) == '00:34:09:20'
+
+    await kp_http_server.stop()

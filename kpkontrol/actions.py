@@ -1,10 +1,11 @@
+import asyncio
 try:
     from urllib import urlencode
     from urlparse import urlunsplit
 except ImportError:
     from urllib.parse import urlencode, urlunsplit
 
-import requests
+import aiohttp
 
 from kpkontrol.parameters import (
     ParameterBase, EnumParameter, IntParameter, StrParameter,
@@ -27,15 +28,19 @@ class Action(object):
     _query_params = None
     def __init__(self, netloc, **kwargs):
         self.netloc = netloc
+        self.session = kwargs.get('session')
+        self.loop = kwargs.get('loop')
         init_query_params = kwargs.get('query_params', {})
         self.query_params = self.build_query_params(**init_query_params)
         self.result = None
-    def __call__(self):
-        r = self.build_request()
-        result = self.process_response(r)
+    async def __call__(self, **kwargs):
+        self._build_session(**kwargs)
+        r = await self.build_request()
+        async with r:
+            result = await self.process_response(r)
         self.result = result
         return result
-    def process_response(self, r):
+    async def process_response(self, r):
         raise NotImplementedError()
     @property
     def url_path(self):
@@ -60,16 +65,16 @@ class Action(object):
         elif self.method == 'post':
             sp_tpl = ('http', self.netloc, self.url_path, '', '')
         return urlunsplit(sp_tpl)
-    def build_request(self):
+    async def build_request(self):
         url = self.full_url
         if self.method == 'get':
-            r = requests.get(url)
+            r = await self.session.get(url)
         elif self.method == 'post':
-            r = requests.post(url, self.query_params)
+            r = await self.session.post(url, data=self.query_params)
         else:
             raise Exception('{} method not supported'.format(self.method))
-        if not r.ok:
-            raise RequestError(r)
+        # if not r.ok:
+        #     raise RequestError(r)
         return r
     @classmethod
     def iter_bases(cls):
@@ -90,13 +95,26 @@ class Action(object):
             params.update(_params)
         params.update(kwargs)
         return params
+    def _build_session(self, **kwargs):
+        session = kwargs.get('session')
+        loop = kwargs.get('loop')
+        if session is not None:
+            self.session = session
+            self.loop = session._loop
+        elif loop is not None:
+            self.loop = loop
+
+        if self.session is None:
+            self.session = aiohttp.ClientSession(loop=self.loop)
+        self.loop = self.session._loop
+        return self.session
 
 class GetAllParameters(Action):
     _url_path = 'descriptors'
     _query_params = {'paramid':'*'}
-    def process_response(self, r):
+    async def process_response(self, r):
         params = {'by_id':{}, 'by_type':{}}
-        for d in r.json():
+        for d in await r.json(content_type=None):
             param = ParameterBase.from_json(d)
             params['by_id'][param.id] = param
             if param.param_type not in params['by_type']:
@@ -110,8 +128,8 @@ class GetParameter(Action):
         self.parameter = kwargs.get('parameter')
         super(GetParameter, self).__init__(netloc, **kwargs)
         self.query_string = self.parameter.id
-    def process_response(self, r):
-        return self.parameter.parse_response(r)
+    async def process_response(self, r):
+        return await self.parameter.parse_response(r)
 
 class SetParameter(Action):
     _url_path = 'config'
@@ -124,14 +142,14 @@ class SetParameter(Action):
         kwargs['paramName'] = self.parameter.id
         kwargs['newValue'] = self.value
         return super(SetParameter, self).build_query_params(**kwargs)
-    def process_response(self, r):
-        return self.parameter.parse_response(r)
+    async def process_response(self, r):
+        return await self.parameter.parse_response(r)
 
 class Connect(Action):
     _url_path = 'json'
     _query_params = {'action':'connect', 'configid':0}
-    def process_response(self, r):
-        data = r.json()
+    async def process_response(self, r):
+        data = await r.json(content_type=None)
         return data['connectionid']
 
 class ListenForEvents(Action):
@@ -141,22 +159,23 @@ class ListenForEvents(Action):
         self.connection_id = kwargs.get('connection_id')
         self.all_parameters = kwargs.get('all_parameters')
         super(ListenForEvents, self).__init__(netloc, **kwargs)
-    def __call__(self):
+    async def __call__(self, **kwargs):
+        self._build_session(**kwargs)
         if self.all_parameters is None:
-            a = GetAllParameters(self.netloc)
-            self.all_parameters = a()
+            a = GetAllParameters(self.netloc, session=self.session)
+            self.all_parameters = await a()
         if self.connection_id is None:
-            a = Connect(self.netloc)
-            self.connection_id = a()
+            a = Connect(self.netloc, session=self.session)
+            self.connection_id = await a()
             self.query_params = self.build_query_params()
-        return super(ListenForEvents, self).__call__()
+        return await super(ListenForEvents, self).__call__()
     def build_query_params(self, **kwargs):
         kwargs['connectionid'] = self.connection_id
         return super(ListenForEvents, self).build_query_params(**kwargs)
-    def process_response(self, r):
+    async def process_response(self, r):
         self.response_obj = r
         params = {}
-        data = r.json()
+        data = await r.json(content_type=None)
         for d in data:
             if 'services' in d:
                 param = self.all_parameters['by_id']['eParamID_NetworkServices']
@@ -181,8 +200,8 @@ class ListenForEvents(Action):
 class GetClips(Action):
     _url_path = 'clips'
     _query_params = {'action':'get_clips'}
-    def process_response(self, r):
-        data = r.json()
+    async def process_response(self, r):
+        data = await r.json(content_type=None)
         clips = []
         for clipdata in data['clips']:
             clips.append(Clip.from_json(clipdata))
