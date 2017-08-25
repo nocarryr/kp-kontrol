@@ -1,7 +1,9 @@
+import os
 import sys
 import io
 import threading
 import shutil
+import json
 from fractions import Fraction
 try:
     from urllib import urlencode
@@ -14,6 +16,64 @@ except ImportError:
 import pytest
 
 PY3 = sys.version_info.major >= 3
+
+
+TEST_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def get_all_parameter_defs(deserialize=True):
+    fn = os.path.join(TEST_DIR, 'data', 'kp-params-flat.json')
+    with open(fn, 'r') as f:
+        s = f.read()
+    if deserialize:
+        data = json.loads(s)
+        return {p['param_id']:p for p in data}
+    return s
+
+PARAMETER_DEFS = get_all_parameter_defs()
+
+@pytest.fixture
+def all_parameter_defs():
+    return PARAMETER_DEFS
+
+def get_parameter_response_crap_json(param_id, value=None):
+    param = PARAMETER_DEFS[param_id]
+    if value is None:
+        value = param['default_value']
+    resp = ['[']
+    if param['param_type'] == 'enum':
+        for item in param['enum_values']:
+            if int(item['value']) == int(value):
+                selected = 'true'
+            else:
+                selected = 'false'
+            item = item.copy()
+            item['selected'] = str(selected).lower()
+            s = 'value:"{value}", text:"{text}", short_text:"{short_text}", selected:"{selected}"'.format(**item)
+            s = '{%s},' % (s)
+            resp.append(s)
+    else:
+        s = 'str_value:"{value}", value:"{value}", int_value:"{value}", param_id:"{param_id}"'.format(
+            value=value, param_id=param['param_id'],
+        )
+        s = '{%s},' % (s)
+        resp.append(s)
+    resp[-1] = resp[-1].rstrip(',')
+    resp.append('];')
+    return '\n'.join(resp)
+
+def get_parameter_response_real_json(param_id, value=None):
+    param = PARAMETER_DEFS[param_id]
+    if value is None:
+        value = param['default_value']
+    data = {'value':None, 'str_value':None}
+    if param['param_type'] == 'enum':
+        for item in param['enum_values']:
+            if item['value'] == param['default_value']:
+                data = {'value':item['value'], 'value_name':item['short_text']}
+    else:
+        data = {k:param['default_value'] for k in ['value', 'str_value']}
+    return json.dumps(data)
+
 
 KP_RESPONSE_DATA = [
     {'url_path':'/clips',
@@ -39,7 +99,12 @@ KP_RESPONSE_DATA = [
               "framecount": "61429"
             }
         ]}
-        """},
+        """,
+    },
+    {'url_path':'/descriptors',
+    'query_params':{'paramid':['*']},
+    'response':get_all_parameter_defs(deserialize=False),
+    },
 ]
 
 
@@ -51,6 +116,17 @@ class KPHttpHandler(BaseHTTPRequestHandler):
             query = parse_qs(p.query)
         else:
             query = None
+        if path == '/options':
+            param_id = p.query.lstrip('?')
+            return {'response':get_parameter_response_real_json(param_id)}
+        elif path == '/config':
+            param_id = query.get('paramName')
+            if isinstance(param_id, list):
+                param_id = param_id[0]
+            value = query.get('newValue')
+            if isinstance(value, list):
+                value = value[0]
+            return {'response':get_parameter_response_crap_json(param_id, value)}
         for resp_data in KP_RESPONSE_DATA:
             if resp_data['url_path'] != path:
                 continue
@@ -103,7 +179,8 @@ class KPHttpServerThread(threading.Thread):
         self.server = None
 
 @pytest.fixture
-def kp_http_server():
+def kp_http_server(monkeypatch):
+    monkeypatch.setattr('kpkontrol.actions.SetParameter.method', 'get')
     server_thread = KPHttpServerThread()
     server_thread.start()
     server_thread.running.wait()
