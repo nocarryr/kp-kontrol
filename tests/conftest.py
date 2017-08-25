@@ -1,9 +1,86 @@
+import os
 import asyncio
+import json
 from fractions import Fraction
 
 from aiohttp import web
 
 import pytest
+
+
+TEST_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def get_all_parameter_defs(deserialize=True):
+    fn = os.path.join(TEST_DIR, 'data', 'kp-params-flat.json')
+    with open(fn, 'r') as f:
+        s = f.read()
+    if deserialize:
+        data = json.loads(s)
+        return {p['param_id']:p for p in data}
+    return s
+
+PARAMETER_DEFS = get_all_parameter_defs()
+
+@pytest.fixture
+def all_parameter_defs(request):
+    def clean_values():
+        for key in PARAMETER_DEFS.keys():
+            if '_value' in PARAMETER_DEFS[key]:
+                del PARAMETER_DEFS[key]['_value']
+    request.addfinalizer(clean_values)
+    return PARAMETER_DEFS
+
+def get_parameter_response_crap_json(param_id, value=None):
+    param = PARAMETER_DEFS[param_id]
+    if value is not None:
+        if value.isdigit() and param['param_type'] == 'enum':
+            value = int(value)
+        PARAMETER_DEFS[param_id]['_value'] = value
+    else:
+        value = param.get('_value', param['default_value'])
+    resp = ['[']
+    if param['param_type'] == 'enum':
+        for item in param['enum_values']:
+            selected = 'false'
+            if isinstance(value, str) and value == item['short_text']:
+                selected = 'true'
+            if isinstance(value, int) and value == item['value']:
+                selected = 'true'
+            item = item.copy()
+            item['selected'] = str(selected).lower()
+            s = 'value:"{value}", text:"{text}", short_text:"{short_text}", selected:"{selected}"'.format(**item)
+            s = '{%s},' % (s)
+            resp.append(s)
+    else:
+        s = 'str_value:"{value}", value:"{value}", int_value:"{value}", param_id:"{param_id}"'.format(
+            value=value, param_id=param['param_id'],
+        )
+        s = '{%s},' % (s)
+        resp.append(s)
+    resp[-1] = resp[-1].rstrip(',')
+    resp.append('];')
+    return '\n'.join(resp)
+
+def get_parameter_response_real_json(param_id, value=None):
+    param = PARAMETER_DEFS[param_id]
+    if value is not None:
+        if value.isdigit() and param['param_type'] == 'enum':
+            value = int(value)
+        PARAMETER_DEFS[param_id]['_value'] = value
+    else:
+        value = param.get('_value', param['default_value'])
+    data = {'value':None, 'str_value':None}
+    if param['param_type'] == 'enum':
+        for item in param['enum_values']:
+            if isinstance(value, str) and value != item['short_text']:
+                continue
+            if isinstance(value, int) and value != item['value']:
+                continue
+            data = {'value':item['value'], 'value_name':item['short_text']}
+    else:
+        data = {k:value for k in ['value', 'str_value']}
+    return json.dumps(data)
+
 
 KP_RESPONSE_DATA = [
     {'url_path':'/clips',
@@ -29,15 +106,34 @@ KP_RESPONSE_DATA = [
               "framecount": "61429"
             }
         ]}
-        """},
+        """,
+    },
+    {'url_path':'/descriptors',
+    'query_params':{'paramid':['*']},
+    'response':get_all_parameter_defs(deserialize=False),
+    },
 ]
 
 
 class KPHttpHandler(object):
-    def _get_data(self, request):
+    async def _get_data(self, request):
         u = request.url
         path = u.path
-        query = u.query
+        if request.method == 'POST':
+            query = await request.post()
+        else:
+            query = u.query
+        if path == '/options':
+            param_id = u.query_string.lstrip('?')
+            return {'response':get_parameter_response_real_json(param_id)}
+        elif path == '/config':
+            param_id = query.getall('paramName')
+            if isinstance(param_id, list):
+                param_id = param_id[0]
+            value = query.getall('newValue')
+            if isinstance(value, list):
+                value = value[0]
+            return {'response':get_parameter_response_crap_json(param_id, value)}
         for resp_data in KP_RESPONSE_DATA:
             if resp_data['url_path'] != path:
                 continue
@@ -54,7 +150,7 @@ class KPHttpHandler(object):
             return resp_data
         return None
     async def do_GET(self, request):
-        resp_data = self._get_data(request)
+        resp_data = await self._get_data(request)
         if resp_data is None:
             raise web.HTTPNotFound(text='Not Found')
 

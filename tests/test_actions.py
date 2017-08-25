@@ -4,7 +4,7 @@ from fractions import Fraction
 
 import pytest
 
-from kpkontrol import actions, objects, timecode
+from kpkontrol import actions, objects, timecode, parameters
 
 @pytest.mark.asyncio
 async def test_get_clips(kp_http_server):
@@ -43,4 +43,58 @@ async def test_get_clips(kp_http_server):
     assert str(clip.start_timecode) == '18:25:06;12'
     assert str(clip.duration_tc) == '00:34:09:20'
 
+    await kp_http_server.stop()
+
+@pytest.mark.asyncio
+async def test_get_parameters(kp_http_server, all_parameter_defs):
+    await kp_http_server.start()
+    host_address = kp_http_server.host_address
+
+    action = actions.GetAllParameters(host_address)
+
+    all_parameters = await action()
+
+    for param in all_parameters['by_id'].values():
+        if param.param_type in ['data', 'octets', 'octets_read_only']:
+            continue
+        assert param is all_parameters['by_id'][param.id]
+        assert param.id == all_parameter_defs[param.id]['param_id']
+        assert param.param_type == all_parameter_defs[param.id]['param_type']
+
+        action = actions.GetParameter(host_address, parameter=param)
+        value = await action()
+        if value is None:
+            assert not all_parameter_defs[param.id]['default_value']
+        elif param.param_type == 'enum':
+            assert isinstance(value, parameters.ParameterEnumItem)
+            assert value.value == all_parameters['by_id'][param.id].default_value == all_parameter_defs[param.id]['default_value']
+        else:
+            assert value == all_parameter_defs[param.id].get('_value', all_parameter_defs[param.id]['default_value'])
+
+            if param.param_type == 'string':
+                assert isinstance(value, str)
+            elif param.param_type == 'integer':
+                assert isinstance(value, int)
+
+        if param.param_type == 'enum':
+            for item in param.enum_items.values():
+                action = actions.SetParameter(host_address, parameter=param, value=item.value)
+                response = await action()
+                assert response is item
+
+                action2 = actions.GetParameter(host_address, parameter=param)
+                response2 = await action2()
+                assert response2 is response
+
+        else:
+            action = actions.SetParameter(host_address, parameter=param, value='42')
+            response = await action()
+            if param.param_type == 'string':
+                assert response == '42'
+            else:
+                assert response == 42
+
+            action2 = actions.GetParameter(host_address, parameter=param)
+            response2 = await action2()
+            assert response2 == response
     await kp_http_server.stop()
