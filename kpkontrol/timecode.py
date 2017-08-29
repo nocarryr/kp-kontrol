@@ -39,10 +39,7 @@ class Timecode(Frame, ObjectBase):
         return cls(**kwargs)
     @classmethod
     def from_frames(cls, total_frames, frame_format):
-        obj = cls(frame_format=frame_format)
-        for i in range(total_frames):
-            obj.incr()
-        return obj
+        return cls(frame_format=frame_format, total_frames=total_frames)
     @property
     def total_seconds(self):
         s = int((self.total_frames-self.value) / self.frame_format.rate)
@@ -73,45 +70,3 @@ class Timecode(Frame, ObjectBase):
         hmsf = [int(v) for v in tc_str.split(':')]
         keys = ['hours', 'minutes', 'seconds', 'frames']
         self.set(**{k:v for k, v in zip(keys, hmsf)})
-    def __add__(self, other):
-        obj = self.copy()
-        if isinstance(other, Timecode):
-            other = other.total_frames
-        if isinstance(other, numbers.Number):
-            obj += other
-            return obj
-        elif isinstance(other, datetime.timedelta):
-            dt = self.datetime
-            dt += other
-            obj.from_dt(dt)
-            return obj
-        else:
-            return NotImplemented
-    def __sub__(self, other):
-        obj = self.copy()
-        if isinstance(other, Timecode):
-            other = other.total_frames
-        if isinstance(other, numbers.Number):
-            obj -= other
-            return obj
-        elif isinstance(other, datetime.timedelta):
-            dt = self.datetime
-            dt -= other
-            obj.from_dt(dt)
-            return obj
-        else:
-            return NotImplemented
-    def copy(self):
-        f = self.__class__(frame_format=self.frame_format, total_frames=self.total_frames)
-        f._value = self._value
-        f.second._value = self.second._value
-        f.minute._value = self.minute._value
-        f.hour._value = self.hour._value
-        return f
-    def __str__(self):
-        fmt = ':'.join(['{:02}'] * 3)
-        if self.frame_format.drop_frame:
-            fmt = ';'.join([fmt, '{:02}'])
-        else:
-            fmt = ':'.join([fmt, '{:02}'])
-        return fmt.format(*[v.value for v in self.get_hmsf()])

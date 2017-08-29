@@ -37,7 +37,7 @@ setup(
     install_requires=[
         'requests',
         'python-dispatch',
-        'python-ltc>=0.0.2',
+        'python-ltc>=0.0.3',
     ],
     include_package_data=True,
     setup_requires=['pypandoc'],
