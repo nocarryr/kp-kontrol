@@ -12,4 +12,5 @@ install:
 script:
     - py.test --cov-config .coveragerc --cov=kpkontrol
 after_success:
+    - coverage combine
     - coveralls
