@@ -64,6 +64,22 @@ class KpDevice(ObjectBase):
         await self._get_all_parameters()
         await self.update_clips()
         self.connected = True
+        self._update_loop_fut = asyncio.ensure_future(self._update_loop())
+    async def stop(self):
+        if not self.connected:
+            return
+        self.connected = False
+        fut = getattr(self, '_update_loop_fut', None)
+        if fut is not None:
+            await fut
+        if self.session is not None:
+            self.session.close()
+            self.session = None
+    async def _update_loop(self):
+        while self.connected:
+            await self.listen_for_events()
+            await self.update_clips()
+            await asyncio.sleep(.1)
     async def _do_action(self, action_cls, **kwargs):
         kwargs.setdefault('session', self.session)
         kwargs.setdefault('loop', self.loop)
