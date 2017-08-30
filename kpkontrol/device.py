@@ -8,7 +8,7 @@ from kpkontrol.base import ObjectBase
 from kpkontrol import actions
 from kpkontrol.parameters import ParameterBase
 from kpkontrol.objects import DeviceParameter, Clip
-from kpkontrol.timecode import FrameRate, Timecode
+from kpkontrol.timecode import FrameRate, FrameFormat, Timecode
 
 class KpDevice(ObjectBase):
     name = Property()
@@ -164,6 +164,7 @@ class KpDevice(ObjectBase):
 class KpTransport(ObjectBase):
     active = Property(False)
     playing = Property(False)
+    recording = Property(False)
     paused = Property(False)
     shuttle = Property(False)
     clip = Property()
