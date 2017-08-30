@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import numbers
 
@@ -70,3 +71,68 @@ class Timecode(Frame, ObjectBase):
         hmsf = [int(v) for v in tc_str.split(':')]
         keys = ['hours', 'minutes', 'seconds', 'frames']
         self.set(**{k:v for k, v in zip(keys, hmsf)})
+    async def start_freerun(self):
+        await self.stop_freerun()
+        loop = self.loop = asyncio.get_event_loop()
+        self._freerunning = asyncio.Event()
+        self._freerun_stopped = asyncio.Event()
+        self.freerun_offset = 0.
+        self.freerun_lock = asyncio.Lock()
+        self.freerun_nframes = 0
+        self.freerun_start_ts = self.freerun_tick_ts = loop.time()
+        self.freerun_fut = asyncio.ensure_future(self.freerun())
+    async def freerun(self):
+        loop = self.loop
+        fr = self.frame_format.rate
+        timeout = 1. / fr
+        self._freerunning.set()
+        while self._freerunning.is_set():
+            async with self.freerun_lock:
+                self.incr()
+                self.freerun_nframes += 1
+                now = self.freerun_tick_ts = loop.time()
+                frame_time = (self.freerun_nframes-1) / fr
+                elapsed = now - self.freerun_start_ts
+                offset = elapsed - frame_time
+                self.freerun_offset = offset * fr
+            next_timeout = timeout - offset
+            if next_timeout < 0:
+                next_timeout = 0
+            await asyncio.sleep(next_timeout)
+        self._freerun_stopped.set()
+    async def set_async(self, **kwargs):
+        e = getattr(self, '_freerunning', None)
+        if e is not None and e.is_set():
+            async with self.freerun_lock:
+                prev_frames = self.total_frames
+                self.set(**kwargs)
+                if prev_frames < self.total_frames:
+                    diff = prev_frames - self.total_frames
+                    self.freerun_nframes += diff
+                    self.freerun_start_ts -= float(diff / self.frame_format.rate)
+                elif prev_frames > self.total_frames:
+                    diff = self.total_frames - prev_frames
+                    self.freerun_nframes -= diff
+                    self.freerun_start_ts += float(diff / self.frame_format.rate)
+        else:
+            self.set(**kwargs)
+    async def set_from_string_async(self, tc_str):
+        e = getattr(self, '_freerunning', None)
+        if e is not None and e.is_set():
+            async with self.freerun_lock:
+                self.freerun_start_ts = self.loop.time()
+                self.freerun_nframes = 0
+                self.set_from_string(tc_str)
+        else:
+            self.set_from_string(tc_str)
+    async def stop_freerun(self):
+        freerunning = getattr(self, '_freerunning', None)
+        stop_event = getattr(self, '_freerun_stopped', None)
+        if freerunning is None:
+            return
+        freerunning.clear()
+        if stop_event is not None:
+            await stop_event.wait()
+        await self.freerun_fut
+        self._freerunning = None
+        self._freerun_stopped = None
