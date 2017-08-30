@@ -167,6 +167,10 @@ class KpTransport(ObjectBase):
     recording = Property(False)
     paused = Property(False)
     shuttle = Property(False)
+    timecode = Property()
+    timecode_str = Property('00:00:00:00')
+    timecode_remaining = Property()
+    timecode_remaining_str = Property('00:00:00:00')
     clip = Property()
     __attribute_names = [
         'active', 'playing', 'recording', 'paused', 'shuttle',
@@ -183,7 +187,14 @@ class KpTransport(ObjectBase):
     # _transport_param_get = 'eParamID_TransportState'
     # _transport_param_set = 'eParamID_TransportCommand'
     def __init__(self, **kwargs):
-        self.bind(clip=self.on_clip, active=self.on_active)
+        self.bind(
+            clip=self.on_clip,
+            active=self.on_active,
+            playing=self.on_playing,
+            recording=self.on_recording,
+            timecode=self.on_timecode,
+            timecode_remaining=self.on_timecode_remaining,
+        )
         super(KpTransport, self).__init__(**kwargs)
         self.device.bind(on_parameter_value=self.on_parameter_value)
     @property
@@ -195,7 +206,6 @@ class KpTransport(ObjectBase):
         if p is None:
             all_params = self.device.all_parameters
             p = self._timecode_param = all_params.get('eParamID_DisplayTimecode')
-            p.bind(value=self.process_timecode_response)
         return p
     @property
     def transport_param_get(self):
@@ -247,8 +257,63 @@ class KpTransport(ObjectBase):
         if clip is None:
             self.timecode = None
         self.timecode = clip.start_timecode.copy()
+        self.timecode_remaining = Timecode(
+            frame_format=FrameFormat(rate=self.timecode.frame_format.rate),
+            total_frames=self.clip.duration_tc.total_frames,
+        )
     def on_active(self, *args, **kwargs):
         pass
+    def on_playing(self, instance, value, **kwargs):
+        if self.timecode is None:
+            return
+        if value:
+            asyncio.ensure_future(self.timecode.start_freerun(), loop=self.loop)
+        else:
+            asyncio.ensure_future(self.stop_freerun(), loop=self.loop)
+    def on_recording(self, instance, value, **kwargs):
+        if self.timecode is None:
+            return
+        if value:
+            asyncio.ensure_future(self.timecode.start_freerun(), loop=self.loop)
+        else:
+            asyncio.ensure_future(self.stop_freerun(), loop=self.loop)
+    def on_timecode(self, instance, value, **kwargs):
+        old = kwargs.get('old')
+        if old is not None:
+            old.unbind(self)
+            asyncio.ensure_future(self.stop_freerun(old), loop=self.loop)
+        if value is None:
+            return
+        self.timecode_str = str(value)
+        value.bind(on_change=self.on_timecode_change)
+        if self.playing or self.recording:
+            asyncio.ensure_future(value.start_freerun(), loop=self.loop)
+    def on_timecode_remaining(self, instance, value, **kwargs):
+        old = kwargs.get('old')
+        if old is not None:
+            old.unbind(self)
+        if value is not None:
+            self.timecode_remaining_str = str(value)
+            value.bind(on_change=self.on_timecode_remaining_change)
+        else:
+            self.timecode_remaining_str = '00:00:00:00'
+    def on_timecode_change(self, tc, total_frames, **kwargs):
+        prev_frames = kwargs.get('old')
+        if tc is not self.timecode:
+            return
+        self.timecode_str = str(tc)
+        if self.timecode_remaining is not None:
+            if total_frames > prev_frames:
+                self.timecode_remaining -= total_frames - prev_frames
+            else:
+                self.timecode_remaining += prev_frames - total_frames
+    def on_timecode_remaining_change(self, tc, total_frames, **kwargs):
+        tc = kwargs.get('obj')
+        self.timecode_remaining_str = str(tc)
+    async def stop_freerun(self, timecode=None):
+        if timecode is None:
+            timecode = self.timecode
+        await timecode.stop_freerun()
     def on_parameter_value(self, instance, value, **kwargs):
         param = self.transport_param_get
         if param is not None and param.id == instance.id:
@@ -259,9 +324,12 @@ class KpTransport(ObjectBase):
             if value in self.device.clips:
                 self.clip = self.device.clips[value]
     def process_timecode_response(self, instance, value, **kwargs):
-        if self.timecode is None:
+        tc = self.timecode
+        if tc is None:
             return
-        self.timecode.set_from_string(value)
+        if self.timecode_str == value:
+            return
+        asyncio.ensure_future(tc.set_from_string_async(value), loop=self.loop)
     def process_transport_response(self, instance, value, **kwargs):
         s = str(value).lower()
         self.playing = 'playing' in s
