@@ -252,7 +252,7 @@ class KpTransport(ObjectBase):
         param = self.transport_param_get
         if param is not None and param.id == instance.id:
             self.process_transport_response(instance, value, **kwargs)
-        elif instance.id == self.timecode_param:
+        elif instance.id == self.timecode_param.id:
             self.process_timecode_response(instance, value, **kwargs)
         elif instance.id == 'eParamID_CurrentClip':
             if value in self.device.clips:
