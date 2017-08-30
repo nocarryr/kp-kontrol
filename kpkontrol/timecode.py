@@ -1,6 +1,7 @@
 import datetime
 import numbers
 
+from pydispatch import Property
 from pyltc.frames import FrameRate as _FrameRate
 from pyltc.frames import FrameFormat, Frame
 from kpkontrol.base import ObjectBase
@@ -25,9 +26,13 @@ class FrameRate(_FrameRate):
         return super(FrameRate, cls).from_float(value)
 
 class Timecode(Frame, ObjectBase):
+    total_frames = Property(0)
     _events_ = ['on_change']
     def __new__(cls, *args, **kwargs):
         return ObjectBase.__new__(cls)
+    def __init__(self, **kwargs):
+        self.bind(total_frames=self.on_total_frames)
+        super().__init__(**kwargs)
     @classmethod
     def parse(cls, tc_str, frame_rate, drop_frame=False):
         if ';' in tc_str:
@@ -56,14 +61,9 @@ class Timecode(Frame, ObjectBase):
 
         dt += self.timedelta
         return dt
-    def set_value(self, value):
-        super(Timecode, self).set_value(value)
-        self.emit('on_change', obj=self)
-    def set(self, **kwargs):
-        prev = self.value
-        super(Timecode, self).set(**kwargs)
-        if self.value == prev:
-            self.emit('on_change', obj=self)
+    def on_total_frames(self, instance, value, **kwargs):
+        kwargs.setdefault('obj', instance)
+        self.emit('on_change', instance, value, **kwargs)
     def set_from_string(self, tc_str):
         if self.frame_format.drop_frame:
             tc_str = ':'.join(tc_str.split(';'))
