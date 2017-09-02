@@ -180,6 +180,7 @@ class KpTransport(ObjectBase):
     timecode_str = Property('00:00:00:00')
     timecode_remaining = Property()
     timecode_remaining_str = Property('00:00:00:00')
+    frame_range = ListProperty([0, 1])
     clip = Property()
     __attribute_names = [
         'active', 'playing', 'recording', 'paused', 'shuttle',
@@ -269,11 +270,17 @@ class KpTransport(ObjectBase):
     def on_clip(self, instance, clip, **kwargs):
         if clip is None:
             self.timecode = None
+            self.timecode_remaining = None
         self.timecode = clip.start_timecode.copy()
         self.timecode_remaining = Timecode(
             frame_format=FrameFormat(rate=self.timecode.frame_format.rate),
             total_frames=self.clip.duration_tc.total_frames,
         )
+        start_f = self.clip.start_timecode.total_frames
+        self.frame_range = [
+            start_f,
+            start_f + self.clip.duration_tc.total_frames
+        ]
     def on_active(self, *args, **kwargs):
         pass
     def on_playing(self, instance, value, **kwargs):
