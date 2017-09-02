@@ -31,9 +31,6 @@ class Timecode(Frame, ObjectBase):
     _events_ = ['on_change']
     def __new__(cls, *args, **kwargs):
         return ObjectBase.__new__(cls)
-    def __init__(self, **kwargs):
-        self.bind(total_frames=self.on_total_frames)
-        super().__init__(**kwargs)
     @classmethod
     def parse(cls, tc_str, frame_rate, drop_frame=False):
         if ';' in tc_str:
@@ -62,9 +59,24 @@ class Timecode(Frame, ObjectBase):
 
         dt += self.timedelta
         return dt
-    def on_total_frames(self, instance, value, **kwargs):
-        kwargs.setdefault('obj', instance)
-        self.emit('on_change', instance, value, **kwargs)
+    def incr(self):
+        old = self.total_frames
+        super(Timecode, self).incr()
+        self.emit('on_change', self, self.total_frames, obj=self, old=old)
+    def decr(self):
+        old = self.total_frames
+        super(Timecode, self).decr()
+        self.emit('on_change', self, self.total_frames, obj=self, old=old)
+    def set_total_frames(self, total_frames):
+        old = self.total_frames
+        super(Timecode, self).set_total_frames(total_frames)
+        if self.total_frames != old:
+            self.emit('on_change', self, self.total_frames, obj=self, old=old)
+    def set(self, **kwargs):
+        old = self.total_frames
+        super(Timecode, self).set(**kwargs)
+        if self.total_frames != old:
+            self.emit('on_change', self, self.total_frames, obj=self, old=old)
     def set_from_string(self, tc_str):
         if self.frame_format.drop_frame:
             tc_str = ':'.join(tc_str.split(';'))
