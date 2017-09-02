@@ -1,0 +1,69 @@
+#: import icon kpkontrol.kivyui.garden.iconfonts.icon
+#: include kpkontrol/kivyui/transport.kv
+#: include kpkontrol/kivyui/cliplist.kv
+
+RootWidget:
+    app: app
+    header_widget: header_widget
+    main_widget: main_widget
+    footer_widget: footer_widget
+    device_widget: device_widget
+    BoxLayout:
+        orientation: 'vertical'
+        HeaderWidget:
+            id: header_widget
+            size_hint_y: .1
+            host_address: root.host_address
+            device_name: root.device_name
+            on_host_address: root.host_address = self.host_address
+            connected: root.connected
+            on_connected:
+                if self.connected: root.connect()
+                else: root.disconnect()
+        BoxLayout:
+            id: main_widget
+            size_hint_y: .8
+            DeviceWidget:
+                id: device_widget
+                device: root.device
+                connected: root.connected
+        FooterWidget:
+            id: footer_widget
+            size_hint_y: .1
+
+<HeaderWidget@BoxLayout>:
+    app: app
+    orientation: 'horizontal'
+    host_address: ''
+    device_name: ''
+    connected: False
+    Label:
+        text: 'Device Address'
+    TextInput:
+        multiline: False
+        text: root.host_address
+        on_focus: if not self.focus: root.host_address = self.text
+    Label:
+        text: root.device_name
+    Button:
+        text: 'Disconnect' if root.connected else 'Connect'
+        on_release: root.connected = not root.connected
+
+<FooterWidget@BoxLayout>:
+    orientation: 'horizontal'
+
+<DeviceWidget>:
+    app: app
+    orientation: 'vertical'
+    transport_widget: transport_widget
+    clip_list: clip_list
+    ClipList:
+        id: clip_list
+        size_hint_y: .5
+        device: root.device
+        current_clip_name: transport_widget.clip_name
+    TransportWidget:
+        id: transport_widget
+        size_hint_y: .5
+        device: root.device
+        connected: root.connected

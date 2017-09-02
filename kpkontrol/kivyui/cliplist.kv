@@ -1,0 +1,118 @@
+# <ClipListItem>:
+#     orientation: 'horizontal'
+#     canvas.before:
+#         Color:
+#             rgba: (.0, 0.9, .1, .3) if self.selected else (0, 0, 0, 1)
+#         Rectangle:
+#             pos: self.pos
+#             size: self.size
+#         Color:
+#             rgba: (1, 1, 1, 1)
+#         Line:
+#             rectangle: (self.x, self.y, self.width, self.height)
+#     Label:
+#         text: root.name
+#     Label:
+#         text: str(root.start_timecode)
+#     Label:
+#         text: str(root.duration)
+#     Label:
+#         text: str(root.timestamp)
+
+# <ClipListHeader>:
+#     orientation: 'horizontal'
+#     Label:
+#         text: 'Name'
+#     Label:
+#         text: 'Start TC'
+#     Label:
+#         text: 'Duration'
+#     Label:
+#         text: 'Timestamp'
+
+# <ClipListRV>:
+#     app: app
+#     viewclass: 'ClipListItem'
+#     SelectableRecycleBoxLayout:
+#         default_size: None, dp(56)
+#         default_size_hint: 1, None
+#         size_hint_y: None
+#         height: self.minimum_height
+#         orientation: 'vertical'
+#         # multiselect: True
+#         # touch_multiselect: True
+
+
+<ClipList>:
+    app: app
+    orientation: 'vertical'
+    list_widget: list_widget
+    ClipListHeader:
+        id: header_widget
+        size_hint_y: .1
+    FloatLayout:
+        id: scr_parent
+        size_hint_y: .8
+        ScrollView:
+            size_hint: 1, None
+            size: scr_parent.size
+            pos: scr_parent.pos
+            BoxLayout:
+                id: list_widget
+                orientation: 'vertical'
+                size_hint_y: None
+    BoxLayout:
+        orientation: 'horizontal'
+        size_hint_y: .1
+        disabled: root.selected_item is None
+        opacity: 0 if self.disabled else 1
+        Button:
+            text: 'Load'
+            on_release: if root.selected_item is not None: root.dispatch('on_load_clip_btn')
+        Button:
+            text: 'Delete'
+            on_release: if root.selected_item is not None: root.dispatch('on_delete_clip_btn')
+        Button:
+            text: 'Get URL'
+            on_release: if root.selected_item is not None: root.dispatch('on_get_url_btn')
+
+<ClipListHeader@BoxLayout>:
+    orientation: 'horizontal'
+    ClipListLabel:
+        text: 'Name'
+    ClipListLabel:
+        text: 'Start TC'
+    ClipListLabel:
+        text: 'Duration'
+    ClipListLabel:
+        text: 'Timestamp'
+
+<ClipListItem>:
+    orientation: 'horizontal'
+    size_hint_y: None
+    height: '40dp'
+    canvas.before:
+        Color:
+            rgba: (.0, 0.9, .1, .3) if self.selected else (0, 0, 0, 1)
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    ClipListLabel:
+        text: root.name
+        bold: root.is_current_clip
+    ClipListLabel:
+        text: str(root.start_timecode)
+        bold: root.is_current_clip
+    ClipListLabel:
+        text: str(root.duration)
+        bold: root.is_current_clip
+    ClipListLabel:
+        text: str(root.timestamp)
+        bold: root.is_current_clip
+
+<ClipListLabel@Label>:
+    canvas.before:
+        Color:
+            rgba: (1, 1, 1, 1)
+        Line:
+            rectangle: (self.x, self.y, self.width, self.height)

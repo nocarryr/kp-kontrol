@@ -1,0 +1,111 @@
+#: import icon kpkontrol.kivyui.garden.iconfonts.icon
+
+<TransportWidget>:
+    app: app
+    orientation: 'vertical'
+    BoxLayout:
+        canvas.before:
+            Color:
+                rgba: [.1, .1, .1, 1]
+            Rectangle:
+                pos: self.pos
+                size: self.size
+        size_hint_y: .2
+        orientation: 'horizontal'
+        TransportDisplayLabel:
+            label_text: 'Clip'
+            value_text: root.clip_name
+        TransportDisplayLabel:
+            label_text: 'Current TC'
+            value_text: root.timecode_str
+        TransportDisplayLabel:
+            label_text: 'Remaining'
+            value_text: '-{}'.format(root.timecode_remaining_str)
+    TransportPosSlider:
+        size_hint_y: .2
+        transport_widget: root
+        range: root.frame_range
+        transport_value: root.current_frame
+    BoxLayout:
+        size_hint_y: .5
+        orientation: 'vertical'
+        spacing: 2
+        BoxLayout:
+            orientation: 'horizontal'
+            spacing: 2
+            TransportButton:
+                icon_name: 'fa-step-backward'
+                on_release: root.dispatch('on_btn_release', 'step_reverse')
+                btn_state: self.state == 'down'
+            TransportButton:
+                icon_name: 'fa-play'
+                on_release: root.dispatch('on_btn_release', 'play')
+                btn_state: root.playing
+            TransportButton:
+                icon_name: 'fa-step-forward'
+                on_release: root.dispatch('on_btn_release', 'step_forward')
+                btn_state: self.state == 'down'
+            TransportButton:
+                icon_name: 'fa-stop'
+                on_release: root.dispatch('on_btn_release', 'stop')
+                btn_state: app.btn_flash if root.paused else root.stopped
+        BoxLayout:
+            orientation: 'horizontal'
+            spacing: 2
+            TransportButton:
+                icon_name: 'fa-backward'
+                on_release: root.dispatch('on_btn_release', 'shuttle_reverse')
+                btn_state: root.shuttling_reverse
+            TransportButton:
+                icon_name: 'fa-pause'
+                on_release: root.dispatch('on_btn_release', 'pause')
+                btn_state: root.paused
+            TransportButton:
+                icon_name: 'fa-forward'
+                on_release: root.dispatch('on_btn_release', 'shuttle_forward')
+                btn_state: root.shuttling_forward
+            TransportButton:
+                icon_name: 'fa-circle'
+                on_release: root.dispatch('on_btn_release', 'record')
+                btn_state: root.recording
+                background_color_active: [1., 0., 0., 1.]
+                background_color_inactive: [.5, 0., 0., 1.]
+    Label:
+        size_hint_y: .1
+        text: root.transport_str
+
+<TransportDisplayLabel@BoxLayout>:
+    orientation: 'vertical'
+    label_text: ''
+    value_text: ''
+    canvas.before:
+        Color:
+            rgba: (1, 1, 1, 1)
+        Line:
+            rectangle: (self.x, self.y, self.width, self.height)
+    Label:
+        canvas.before:
+            Color:
+                rgba: (0, 0, 1, 1)
+            Line:
+                rectangle: (self.x, self.y, self.width, self.height)
+        text: root.label_text
+    Label:
+        canvas.before:
+            Color:
+                rgba: (0, 0, 1, 1)
+            Line:
+                rectangle: (self.x, self.y, self.width, self.height)
+        font_size: '20sp'
+        text: root.value_text
+
+<TransportButton@Button>:
+    markup: True
+    icon_name: ''
+    text: '' if not self.icon_name else "%s"%(icon(self.icon_name))
+    background_color_active: [.8, .8, .8, 1.]
+    background_color_inactive: [.5, .5, .5, 1.]
+    btn_state: False
+    background_color: self.background_color_active if self.btn_state else self.background_color_inactive
+    background_normal: ''
+    background_down: ''
