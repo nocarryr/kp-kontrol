@@ -250,6 +250,10 @@ class KpTransport(ObjectBase):
         await self.set_transport_async('Record Command')
     async def stop(self):
         await self.set_transport_async('Stop Command')
+    async def pause(self):
+        if self.paused:
+            return
+        await self.stop()
     async def shuttle_forward(self):
         await self.set_transport_async('Fast Forward')
     async def shuttle_reverse(self):
