@@ -245,6 +245,22 @@ class KpTransport(ObjectBase):
         param = self.device.all_parameters['eParamID_GoToClip']
         await param.set_value(clip.name)
         self.clip = clip
+    async def go_to_frame(self, frame):
+        tc = self.timecode.copy()
+        tc.set_total_frames(frame)
+        await self.go_to_timecode(tc)
+    async def go_to_timecode(self, tc):
+        if isinstance(tc, Timecode):
+            tc = str(tc)
+        param = self.device.all_parameters['eParamID_CueToTimecode']
+        playing = self.playing
+        await param.set_value(tc)
+        if playing:
+            while not self.timecode_str == tc:
+                await asyncio.sleep(0)
+            await self.play()
+        else:
+            await self.set_transport_async('Cue')
     async def play(self):
         await self.set_transport_async('Play Command')
     async def record(self):
