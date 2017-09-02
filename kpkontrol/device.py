@@ -171,7 +171,11 @@ class KpTransport(ObjectBase):
     playing = Property(False)
     recording = Property(False)
     paused = Property(False)
+    stopped = Property(False)
     shuttle = Property(False)
+    shuttling_forward = Property(False)
+    shuttling_reverse = Property(False)
+    transport_str = Property('')
     timecode = Property()
     timecode_str = Property('00:00:00:00')
     timecode_remaining = Property()
@@ -336,13 +340,21 @@ class KpTransport(ObjectBase):
             return
         asyncio.ensure_future(tc.set_from_string_async(value), loop=self.loop)
     def process_transport_response(self, instance, value, **kwargs):
+        self.transport_str = str(value)
         s = str(value).lower()
         self.playing = 'playing' in s
         self.recording = s == 'recording'
         if s.startswith('forward') or s.startswith('reverse'):
             self.paused = s.endswith('step')
             self.shuttle = s.endswith('x')
+            if self.shuttle:
+                self.shuttling_forward = s.startswith('forward')
+                self.shuttle_reverse = not self.shuttling_forward
         else:
             self.paused = s == 'paused'
             self.shuttle = False
+        if not self.shuttle:
+            self.shuttling_forward = False
+            self.shuttling_reverse = False
         self.active = self.playing or self.recording or self.paused or self.shuttle
+        self.stopped = not self.active
