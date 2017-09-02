@@ -152,6 +152,8 @@ class Clip(ObjectBase):
         )
         kwargs['duration_timedelta'] = kwargs['duration_tc'].timedelta
         return cls(**kwargs)
+    def get_url(self, host_address):
+        return '/'.join([host_address.rstrip('/'), 'media', self.name])
     def __repr__(self):
         return '<{self.__class__.__name__}: {self}>'.format(self=self)
     def __str__(self):
