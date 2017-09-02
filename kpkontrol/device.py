@@ -76,10 +76,15 @@ class KpDevice(ObjectBase):
             self.session.close()
             self.session = None
     async def _update_loop(self):
-        while self.connected:
-            await self.listen_for_events()
-            await self.update_clips()
-            await asyncio.sleep(.1)
+        async def inner(f, timeout):
+            while self.connected:
+                await f()
+                await asyncio.sleep(timeout)
+        coros = [
+            inner(self.listen_for_events, .1),
+            inner(self.update_clips, .5),
+        ]
+        await asyncio.wait(coros)
     async def _do_action(self, action_cls, **kwargs):
         kwargs.setdefault('session', self.session)
         kwargs.setdefault('loop', self.loop)
