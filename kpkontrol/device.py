@@ -7,7 +7,7 @@ from pydispatch.properties import (
 from kpkontrol.base import ObjectBase
 from kpkontrol import actions
 from kpkontrol.parameters import ParameterBase
-from kpkontrol.objects import DeviceParameter, Clip
+from kpkontrol.objects import DeviceParameter, NetworkServicesParameter, Clip
 from kpkontrol.timecode import FrameRate, FrameFormat, Timecode
 
 class KpDevice(ObjectBase):
@@ -18,6 +18,7 @@ class KpDevice(ObjectBase):
     input_timecode = Property()
     connected = Property(False)
     parameters_received = Property(False)
+    network_devices = DictProperty()
     __attribute_names = [
         'host_address', 'name', 'serial_number',
         'transport', 'clips',
@@ -25,7 +26,10 @@ class KpDevice(ObjectBase):
     __attribute_defaults = {
         'clips':{}
     }
-    _events_ = ['on_events_received', 'on_parameter_value']
+    _events_ = [
+        'on_events_received', 'on_parameter_value',
+        'on_network_device_added', 'on_network_device_removed',
+    ]
     def __init__(self, **kwargs):
         super(KpDevice, self).__init__(**kwargs)
         self.all_parameters = {}
@@ -130,6 +134,13 @@ class KpDevice(ObjectBase):
             if param_id in self.all_parameters:
                 continue
             device_param = DeviceParameter.create(device=self, parameter=param)
+            if isinstance(device_param, NetworkServicesParameter):
+                for d in device_param.devices.values():
+                    self._on_network_device_added(d)
+                device_param.bind(
+                    on_device_added=self._on_network_device_added,
+                    on_device_removed=self._on_network_device_removed,
+                )
             self.all_parameters[param_id] = device_param
             device_param.bind(value=self._on_device_parameter_value)
         self.parameters_received = True
@@ -138,7 +149,7 @@ class KpDevice(ObjectBase):
         for device_param in self.all_parameters.values():
             if device_param.parameter.param_type == 'data':
                 continue
-            if device_param.id == 'eParamID_MACAddress':
+            if device_param.id in ['eParamID_MACAddress', 'eParamID_NetworkServices']:
                 continue
             await device_param.get_value()
     def _on_device_parameter_value(self, instance, value, **kwargs):
@@ -147,6 +158,13 @@ class KpDevice(ObjectBase):
         elif instance.id == 'eParamID_FormattedSerialNumber':
             self.serial_number = value
         self.emit('on_parameter_value', instance, value, **kwargs)
+    def _on_network_device_added(self, device, **kwargs):
+        self.network_devices[device.id] = device
+        self.emit('on_network_device_added', self, device)
+    def _on_network_device_removed(self, device, **kwargs):
+        if device.id in self.network_devices:
+            del self.network_devices[device.id]
+        self.emit('on_network_device_removed', self, device)
     async def _get_parameter_object(self, parameter):
         await self._get_all_parameters()
         if isinstance(parameter, (ParameterBase, DeviceParameter)):

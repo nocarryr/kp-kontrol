@@ -1,4 +1,7 @@
 import datetime
+import ipaddress
+from urllib.parse import urlparse
+import json
 
 from pydispatch.properties import Property, DictProperty
 
@@ -17,6 +20,8 @@ class DeviceParameter(ObjectBase):
         _cls = cls
         if isinstance(param, EnumParameter):
             _cls = DeviceEnumParameter
+        elif param.id == 'eParamID_NetworkServices':
+            _cls = NetworkServicesParameter
         return _cls(**kwargs)
     @property
     def name(self):
@@ -82,6 +87,77 @@ class DeviceEnumItem(ObjectBase):
         return '<{self.__class__.__name__} {self.parameter_item}: active={self.active}'.format(self=self)
     def __str__(self):
         return self.name
+
+class NetworkServicesParameter(DeviceParameter):
+    devices = DictProperty()
+    _events_ = ['on_device_added', 'on_device_removed']
+    def __init__(self, **kwargs):
+        self.bind(value=self.on_value)
+        super(NetworkServicesParameter, self).__init__(**kwargs)
+    def on_value(self, instance, value, **kwargs):
+        if not isinstance(value, list):
+            value = json.loads(value)
+        keys = set()
+        for data in value:
+            d = self.add_device_obj(**data)
+            keys.add(d.id)
+        to_remove = set(self.devices.keys()) - keys
+        for key in to_remove:
+            d = self.devices[key]
+            d.unbind(self)
+            del self.devices[key]
+            self.emit('on_device_removed', d, parameter=self)
+    def add_device_obj(self, **data):
+        data.setdefault('device_parameter', self)
+        d = NetworkDevice(**data)
+        if d.id in self.devices:
+            return d
+        self.devices[d.id] = d
+        d.bind(ip_address=self.on_device_ip_address)
+        self.emit('on_device_added', d, parameter=self)
+        return d
+    def on_device_ip_address(self, instance, value, **kwargs):
+        old = kwargs.get('old')
+        if old and old in self.devices:
+            del self.devices[old]
+        self.devices[value] = instance
+    def __repr__(self):
+        return '<{self.__class__.__name__} {self.parameter}: {self.devices}>'.format(self=self)
+    def __str__(self):
+        return self.name
+
+class NetworkDevice(ObjectBase):
+    device_name = Property()
+    host_name = Property()
+    description = Property()
+    ip_address = Property()
+    port = Property()
+    service_type = Property()
+    service_domain = Property()
+    __attribute_names = [
+        'device_name', 'host_name', 'description', 'ip_address', 'port',
+        'service_type', 'service_domain', 'device_parameter',
+    ]
+    def __init__(self, **kwargs):
+        kwargs['port'] = int(kwargs.get('port', 80))
+        super(NetworkDevice, self).__init__(**kwargs)
+    @property
+    def id(self):
+        return self.ip_address
+    @property
+    def host_address(self):
+        return ':'.join([str(self.ip_address), str(self.port)])
+    @property
+    def service_uri(self):
+        return '.'.join([self.host_name, self.service_type, self.service_domain])
+    @property
+    def is_host_device(self):
+        param = self.device_parameter.device.all_parameters['eParamID_IPAddress_3']
+        return ipaddress.ip_address(self.ip_address) == param.value
+    def __repr__(self):
+        return '<{self.__class__.__name__}: {self}>'.format(self=self)
+    def __str__(self):
+        return '{self.host_name} ({self.ip_address})'.format(self=self)
 
 
 class ClipFormat(ObjectBase):
