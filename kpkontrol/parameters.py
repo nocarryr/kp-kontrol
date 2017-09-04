@@ -1,6 +1,7 @@
 import numbers
 import json
 import re
+import ipaddress
 
 from kpkontrol.base import ObjectBase
 
@@ -177,10 +178,17 @@ class StrParameter(ParameterBase):
         return str(parsed['value'])
 
 class OctetParameter(ParameterBase):
-    pass
+    async def parse_response(self, r):
+        parsed = await super(OctetParameter, self).parse_response(r)
+        v = int(parsed['value'])
+        if v < 0:
+            max_val = 1 << 32
+            v += max_val
+        return ipaddress.ip_address(v)
 
 PARAMETER_TYPES = {
     'enum':EnumParameter,
     'integer':IntParameter,
     'string':StrParameter,
+    'octets':OctetParameter,
 }
