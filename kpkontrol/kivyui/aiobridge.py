@@ -1,61 +1,14 @@
 import threading
 import asyncio
 import weakref
-from functools import partial, wraps, update_wrapper
 
-from kivy.clock import Clock, mainthread
-
-WRAPPER_ASSIGNMENTS = ('__module__', '__name__', '__qualname__', '__doc__',
-    '__annotations__', '__self__', '__func__')
-def foo_wrapped_callback(f, loop, obj=None):
-    # Used by AioBridge.bind_events() to wrap a main thread callback
-    # to be called by kivy.clock.Clock. Attributes are reassigned to make the
-    # wrapped callback 'look' like the original (f.__func__ and f.__self__)
-    # So the weakref storage in pydispatch still functions properly (in theory)
-    # class wrapped_(object):
-    #     def __init__(self, f_, loop_):
-    #         self.f = f_
-    #         self.loop = loop_
-    #     def __call__(self, *args, **kwargs):
-    #         print('im in yer loop: ', self.loop)
-    #         Clock.schedule_once(partial(self.f, *args, **kwargs), 0)
-    #         #self.loop.call_soon_threadsafe(partial(self.f, *args, **kwargs))
-    #     def __get__(self, obj, objtype):
-    #         return types.MethodType(self.__call__, obj, objtype)
-    def wrapped_(f_, loop_):
-        @wraps(f_, assigned=WRAPPER_ASSIGNMENTS)
-        def inner(*args, **kwargs):
-            print('im in yer loop: ', loop_, id(loop_))
-            if isinstance(f_, types.MethodType):
-                self = args[0]
-                args = args[1:]
-            Clock.schedule_once(partial(f_, *args, **kwargs), 0)
-        print(inner)
-        return inner
-    #return update_wrapper(wrapped_(f), f, assigned=WRAPPER_ASSIGNMENTS)
-    #return update_wrapper(wrapped_(f, loop), f, assigned=WRAPPER_ASSIGNMENTS)
-    return wrapped_(f, loop)
+from kivy.clock import mainthread
 
 def wrapped_callback(f):
     @mainthread
     def cb(*args, **kwargs):
-        # #_loop = asyncio.get_event_loop()
-        # t = threading.current_thread()
-        # #mt = threading.main_thread()
-        # print('im in yer loop: ', t)
         f(*args, **kwargs)
     return cb
-
-# class WeakPair(object):
-#     def __init__(self, obj, cb, del_callback):
-#         self.obj_ref = weakref.ref(obj, self.on_wr_removed)
-#         if isinstance(cb, types.MethodType):
-#             cb = cb.__self__
-#         self.cb_ref = weakref.ref(cb, self.on_wr_removed)
-#         self.del_callback = del_callback
-#         self.key = (id(obj), id(cb))
-#     def on_wr_removed(self, *args):
-#         self.del_callback(self)
 
 class AioBridge(threading.Thread):
     def __init__(self, app):
@@ -93,7 +46,7 @@ class AioBridge(threading.Thread):
     def bind_events(self, obj, **kwargs):
         # Override pydispatch.Dispatcher.bind() using wrapped_callback
         # Events should then be dispatched from the thread's event loop to
-        # the main thread using kivy.clock.Clock
+        # the main thread using the kivy.clock.mainthread decorator
         async def do_bind(obj_, **kwargs_):
             obj_.bind(**kwargs_)
         kwargs_ = {}
