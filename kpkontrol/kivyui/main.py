@@ -1,5 +1,6 @@
 import os
 import asyncio
+import json
 from functools import partial
 
 from kpkontrol.kivyui import garden
@@ -21,7 +22,9 @@ from kivy.properties import (
     BooleanProperty,
     DictProperty,
     ListProperty,
+    ConfigParserProperty,
 )
+from kivy.storage.jsonstore import JsonStore
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.boxlayout import BoxLayout
 
@@ -29,6 +32,26 @@ from kpkontrol.kivyui.aiobridge import AioBridge
 from kpkontrol.kivyui.transport import TransportWidget
 from kpkontrol.kivyui.cliplist import ClipList, ClipListItem
 from kpkontrol.device import KpDevice
+
+
+APP_SETTINGS = [
+    {
+        'type':'title',
+        'title':'KpKontrol',
+    },{
+        'type':'string',
+        'title':'Host Address',
+        'section':'device',
+        'key':'host_address',
+    },
+]
+
+APP_SETTINGS_DEFAULTS = {
+    'device':{
+        'host_address':'',
+    },
+}
+
 
 class RootWidget(FloatLayout):
     app = ObjectProperty(None)
@@ -39,7 +62,9 @@ class RootWidget(FloatLayout):
     device = ObjectProperty(None, allownone=True)
     device_name = StringProperty('')
     connected = BooleanProperty(False)
-    host_address = StringProperty('192.168.1.197')
+    host_address = ConfigParserProperty(
+        '', 'device', 'host_address', 'app', val_type=str,
+    )
     def connect(self, *args, **kwargs):
         if self.connected:
             self.disconnect()
@@ -81,7 +106,16 @@ class KpKontrolApp(App):
     aio_loop = ObjectProperty(None)
     async_server_loop = ObjectProperty(None)
     btn_flash = BooleanProperty(False)
+    storage = ObjectProperty(None)
+    _config_base_dir = None
+    @property
+    def config_base_dir(self):
+        p = self._config_base_dir
+        if p is None:
+            p = self._config_base_dir = self.user_data_dir
+        return p
     def on_start(self, *args, **kwargs):
+        self.storage = self.get_application_storage()
         if self.aio_loop is None:
             self.aio_loop = asyncio.get_event_loop()
         self.async_server = AioBridge(self)
@@ -97,6 +131,18 @@ class KpKontrolApp(App):
         self.btn_flash = not self.btn_flash
     def on_stop(self, *args, **kwargs):
         self.async_server.stop()
+    def get_application_config(self):
+        p = self.config_base_dir
+        return super().get_application_config(os.path.join(p, '%(appname)s.ini'))
+    def get_application_storage(self):
+        p = self.config_base_dir
+        fn = os.path.join(p, 'data.json')
+        return JsonStore(fn)
+    def build_config(self, config):
+        for section_name, section in APP_SETTINGS_DEFAULTS.items():
+            config.setdefaults(section_name, section)
+    def build_settings(self, settings):
+        settings.add_json_panel('KpKontrol', self.config, data=json.dumps(APP_SETTINGS))
     def bind_events(self, obj, **kwargs):
         self.async_server.bind_events(obj, **kwargs)
     def run_async_coro(self, coro):

@@ -48,6 +48,9 @@ RootWidget:
     Button:
         text: 'Disconnect' if root.connected else 'Connect'
         on_release: root.connected = not root.connected
+    Button:
+        text: 'Settings'
+        on_release: app.open_settings()
 
 <FooterWidget@BoxLayout>:
     orientation: 'horizontal'
