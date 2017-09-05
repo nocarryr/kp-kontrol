@@ -122,7 +122,6 @@ class KpDevice(ObjectBase):
         await self._get_all_parameters()
         a = self.listen_action
         events = await a()
-        print(events)
         self.emit('on_events_received', self, events)
         for param_id, data in events.items():
             device_param = self.all_parameters[param_id]
