@@ -12,15 +12,6 @@ from kivy.properties import (
     DictProperty,
 )
 
-# class SelectableRecycleBoxLayout(FocusBehavior, LayoutSelectionBehavior,
-#                                  RecycleBoxLayout):
-#     pass
-
-# class ClipListHeader(RecycleDataViewBehavior, BoxLayout):
-#     index = None
-#     selected = BooleanProperty(False)
-#     selectable = BooleanProperty(False)
-
 class ClipListItem(ToggleButtonBehavior, BoxLayout):
     selected = BooleanProperty(False)
     clip = ObjectProperty(None)
@@ -63,7 +54,6 @@ class ClipList(BoxLayout):
     def update_clips(self, device, clips, **kwargs):
         if device is not self.device:
             return
-        #Clock.schedule_once(self._update_clips, 0)
         self._update_clips()
     def _update_clips(self, *args, **kwargs):
         for key in sorted(self.device.clips.keys()):
