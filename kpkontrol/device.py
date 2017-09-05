@@ -76,6 +76,7 @@ class KpDevice(ObjectBase):
         fut = getattr(self, '_update_loop_fut', None)
         if fut is not None:
             await fut
+            self._update_loop_fut = None
         if self.session is not None:
             self.session.close()
             self.session = None

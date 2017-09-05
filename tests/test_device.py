@@ -45,4 +45,9 @@ async def test_device(kp_http_server, all_parameter_defs):
     assert not device.transport.paused
     assert not device.transport.shuttle
 
+    await device.stop()
+    assert not device.connected
+    assert device._update_loop_fut is None
+    assert device.session is None
+
     await kp_http_server.stop()
