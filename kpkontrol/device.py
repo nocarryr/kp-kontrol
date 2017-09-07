@@ -42,6 +42,7 @@ class KpDevice(ObjectBase):
     async def create(cls, **kwargs):
         obj = cls(**kwargs)
         await obj.connect()
+        return obj
     @property
     def session(self):
         return getattr(self, '_session', None)
