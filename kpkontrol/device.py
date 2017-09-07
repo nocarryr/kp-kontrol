@@ -7,7 +7,12 @@ from pydispatch.properties import (
 from kpkontrol.base import ObjectBase
 from kpkontrol import actions
 from kpkontrol.parameters import ParameterBase
-from kpkontrol.objects import DeviceParameter, NetworkServicesParameter, Clip
+from kpkontrol.objects import (
+    DeviceParameter,
+    NetworkServicesParameter,
+    NetworkDevice,
+    Clip,
+)
 from kpkontrol.timecode import FrameRate, FrameFormat, Timecode
 
 class KpDevice(ObjectBase):
@@ -90,6 +95,7 @@ class KpDevice(ObjectBase):
         coros = [
             inner(self.listen_for_events, .1),
             inner(self.update_clips, .5),
+            inner(self.update_gang_params, .5),
         ]
         await asyncio.wait(coros)
     async def _do_action(self, action_cls, **kwargs):
@@ -120,6 +126,11 @@ class KpDevice(ObjectBase):
         current = await self.get_parameter('eParamID_CurrentClip')
         if current in self.clips:
             self.transport.clip = self.clips[current]
+    async def update_gang_params(self):
+        for pid in ['GangEnable', 'GangMaster', 'GangList']:
+            pid = 'eParamID_{}'.format(pid)
+            p = self.all_parameters[pid]
+            await p.get_value()
     async def listen_for_events(self):
         await self._get_all_parameters()
         a = self.listen_action
@@ -187,6 +198,56 @@ class KpDevice(ObjectBase):
             parameter=parameter.parameter,
             value=value,
         )
+    async def create_gang(self, *members):
+        if not len(members):
+            members = [m for m in self.network_devices.values() if m is not self.network_host_device]
+        addrs = []
+        for member in members:
+            if isinstance(member, NetworkDevice):
+                addr = member.ip_address
+            device = await KpDevice.create(host_address=addr, loop=self.loop, session=self.session)
+            p = device.all_parameters['eParamID_GangEnable']
+            await p.set_value('ON')
+            await device.stop(close_session=False)
+            addrs.append(addr)
+
+        p = self.all_parameters['eParamID_GangEnable']
+        await p.set_value('ON')
+        await p.get_value()
+
+        p = self.all_parameters['eParamID_GangMaster']
+        await p.set_value('ON')
+        await p.get_value()
+
+        p = self.all_parameters['eParamID_GangList']
+        await p.set_value(','.join(addrs))
+        await p.get_value()
+
+    async def remove_gang(self):
+        for member in self.network_devices.values():
+            if member is self.network_host_device:
+                continue
+            addr = member.ip_address
+            device = await KpDevice.create(host_address=addr, loop=self.loop, session=self.session)
+            p = device.all_parameters['eParamID_GangMaster']
+            if p.value.name == 'ON':
+                await p.set_value('OFF')
+            p = device.all_parameters['eParamID_GangEnable']
+            await p.set_value('OFF')
+            await device.stop(close_session=False)
+
+        p = self.all_parameters['eParamID_GangMaster']
+        await p.set_value('OFF')
+        await p.get_value()
+
+        p = self.all_parameters['eParamID_GangEnable']
+        await p.set_value('OFF')
+        await p.get_value()
+
+        p = self.all_parameters['eParamID_GangList']
+        await p.set_value('')
+        await p.get_value()
+
 
 class KpTransport(ObjectBase):
     active = Property(False)
@@ -407,3 +468,92 @@ class KpTransport(ObjectBase):
             self.shuttling_reverse = False
         self.active = self.playing or self.recording or self.paused or self.shuttle
         self.stopped = not self.active
+
+def stuff(dev=None, gang_enable=True, gang_disable=True):
+    async def run(device):
+        await device.connect()
+        await asyncio.sleep(8)
+        keys = [key for key in device.all_parameters if 'Gang' in key]
+        print('********HOST:')
+        for key in keys:
+            print('{}: {!r}'.format(key, device.all_parameters[key]))
+        print(':HOST********')
+        if gang_enable:
+            print('set gang mode')
+            await device.create_gang()
+            await asyncio.sleep(1)
+            await device.get_all_parameter_values()
+            print('********HOST:')
+            for key in keys:
+                print('{}: {!r}'.format(key, device.all_parameters[key]))
+            print(':HOST********')
+
+        if gang_disable:
+            if gang_enable:
+                await asyncio.sleep(5)
+            print('remove_gang')
+            await device.remove_gang()
+            await asyncio.sleep(1)
+            await device.get_all_parameter_values()
+            print('********HOST:')
+            for key in keys:
+                print('{}: {!r}'.format(key, device.all_parameters[key]))
+            print(':HOST********')
+
+        if not gang_enable and not gang_disable:
+            for member in device.network_devices.values():
+                addr = member.ip_address
+                if addr == '192.168.168.26':
+                    _addr = 'localhost:8010'
+                elif addr == '192.168.168.27':
+                    _addr = 'localhost:8011'
+                _device = await KpDevice.create(host_address=_addr, loop=device.loop, session=device.session)
+                print('created ', member)
+                _device.print_gang_params()
+
+                await _device.stop(close_session=False)
+
+        # p = device.all_parameters['eParamID_GangList']
+        # await p.set_value('')
+        # p = device.all_parameters['eParamID_GangMaster']
+        # await p.set_value('OFF')
+        # p = device.all_parameters['eParamID_GangEnable']
+        # await p.set_value('OFF')
+        # await device.get_all_parameter_values()
+        # for key in keys:
+        #     print('{}: {!r}'.format(key, device.all_parameters[key]))
+
+        # l = ['eParamID_IPAddress_{}'.format(i) for i in [1,2,3]]
+        # for p in l:
+        #     param = device.all_parameters[p]
+        #     print(repr(param))
+        #     print(param.value, type(param.value))
+
+        # print('transport: clip={}, tc={}'.format(device.transport.clip, device.transport.timecode))
+        # await asyncio.sleep(1.)
+        # print('load clip: ', 'C003SC16TK11.mov')
+        # clip = device.clips['C003SC16TK11.mov']
+        # await device.transport.go_to_clip('C003SC16TK11.mov')
+        # await asyncio.sleep(2.)
+        # print('transport: clip={}, tc={}'.format(device.transport.clip, device.transport.timecode))
+        # print('load clip: ', 'A003SC10TK34.mov')
+        # await device.transport.go_to_clip('A003SC10TK34.mov')
+        # await asyncio.sleep(2.)
+        # print('transport: clip={}, tc={}'.format(device.transport.clip, device.transport.timecode))
+        # print('playing')
+        # await device.transport.play()
+        # await asyncio.sleep(10)
+        # print('stopping')
+        # await device.transport.stop()
+        # await asyncio.sleep(1)
+
+
+    if dev is None:
+        dev = KpDevice(host_address='localhost:8010')# '192.168.1.197')
+        loop = asyncio.get_event_loop()
+        loop.set_debug(True)
+    else:
+        loop = dev.loop
+    loop.run_until_complete(run(dev))
+    #loop.run_until_complete(dev.stop())
+    return dev

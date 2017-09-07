@@ -134,6 +134,9 @@ class NetworkDevice(ObjectBase):
     port = Property()
     service_type = Property()
     service_domain = Property()
+    gang_enabled = Property(False)
+    gang_master = Property(False)
+    gang_members = DictProperty()
     __attribute_names = [
         'device_name', 'host_name', 'description', 'ip_address', 'port',
         'service_type', 'service_domain', 'device_parameter',
@@ -141,6 +144,11 @@ class NetworkDevice(ObjectBase):
     def __init__(self, **kwargs):
         kwargs['port'] = int(kwargs.get('port', 80))
         super(NetworkDevice, self).__init__(**kwargs)
+        self._check_gang_params()
+        self.device.bind(
+            on_parameter_value=self.on_device_parameter_value,
+            network_devices=self.on_device_network_devices,
+        )
     @property
     def id(self):
         return self.ip_address
@@ -152,8 +160,30 @@ class NetworkDevice(ObjectBase):
         return '.'.join([self.host_name, self.service_type, self.service_domain])
     @property
     def is_host_device(self):
-        param = self.device_parameter.device.all_parameters['eParamID_IPAddress_3']
+        param = self.device.all_parameters['eParamID_IPAddress_3']
         return ipaddress.ip_address(self.ip_address) == param.value
+    @property
+    def device(self):
+        return self.device_parameter.device
+    def _check_gang_params(self, *args, **kwargs):
+        all_params = self.device.all_parameters
+        if self.is_host_device:
+            self.gang_enabled = str(all_params['eParamID_GangEnable'].value) == 'ON'
+            self.gang_master = str(all_params['eParamID_GangMaster'].value) == 'ON'
+            for addr in all_params['eParamID_GangList'].value.split(','):
+                if addr in self.gang_members:
+                    continue
+                d = self.device.network_devices.get(addr)
+                if d is not None:
+                    self.gang_members[addr] = d
+        else:
+            self.gang_enabled = self.ip_address in all_params['eParamID_GangList'].value
+    def on_device_parameter_value(self, instance, value, **kwargs):
+        if 'Gang' not in instance.id:
+            return
+        self._check_gang_params()
+    def on_device_network_devices(self, instance, value, **kwargs):
+        self._check_gang_params()
     def __repr__(self):
         return '<{self.__class__.__name__}: {self}>'.format(self=self)
     def __str__(self):
