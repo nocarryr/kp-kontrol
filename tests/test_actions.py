@@ -55,6 +55,8 @@ async def test_get_parameters(kp_http_server, all_parameter_defs):
 
     all_parameters = await action()
 
+    session = action.session
+
     for param in all_parameters['by_id'].values():
         if param.param_type in ['data', 'octets_read_only']:
             continue
@@ -63,7 +65,7 @@ async def test_get_parameters(kp_http_server, all_parameter_defs):
         assert param.param_type == all_parameter_defs[param.id]['param_type']
 
         action = actions.GetParameter(host_address, parameter=param)
-        value = await action()
+        value = await action(session=session)
         if value is None:
             assert not all_parameter_defs[param.id]['default_value']
         elif param.param_type == 'enum':
@@ -91,7 +93,7 @@ async def test_get_parameters(kp_http_server, all_parameter_defs):
         if param.param_type == 'enum':
             for item in param.enum_items.values():
                 action = actions.SetParameter(host_address, parameter=param, value=item.value)
-                response = await action()
+                response = await action(session=session)
                 assert response is item
 
                 action2 = actions.GetParameter(host_address, parameter=param)
@@ -101,18 +103,20 @@ async def test_get_parameters(kp_http_server, all_parameter_defs):
             ip = ipaddress.ip_address('192.168.1.123')
             v = int.from_bytes(ip.packed, byteorder='big')
             action = actions.SetParameter(host_address, parameter=param, value=v)
-            response = await action()
+            response = await action(session=session)
             assert isinstance(response, ipaddress.IPv4Address)
             assert response == ip
         else:
             action = actions.SetParameter(host_address, parameter=param, value='42')
-            response = await action()
+            response = await action(session=session)
             if param.param_type == 'string':
                 assert response == '42'
             else:
                 assert response == 42
 
             action2 = actions.GetParameter(host_address, parameter=param)
-            response2 = await action2()
+            response2 = await action2(session=session)
             assert response2 == response
+
+    await session.close()
     await kp_http_server.stop()
