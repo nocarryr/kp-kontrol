@@ -18,6 +18,7 @@ class KpDevice(ObjectBase):
     input_timecode = Property()
     connected = Property(False)
     parameters_received = Property(False)
+    network_host_device = Property()
     network_devices = DictProperty()
     __attribute_names = [
         'host_address', 'name', 'serial_number',
@@ -160,6 +161,8 @@ class KpDevice(ObjectBase):
             self.serial_number = value
         self.emit('on_parameter_value', instance, value, **kwargs)
     def _on_network_device_added(self, device, **kwargs):
+        if device.is_host_device:
+            self.network_host_device = device
         self.network_devices[device.id] = device
         self.emit('on_network_device_added', self, device)
     def _on_network_device_removed(self, device, **kwargs):
