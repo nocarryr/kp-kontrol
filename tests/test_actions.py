@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import ipaddress
 from fractions import Fraction
 
 import pytest
@@ -55,7 +56,7 @@ async def test_get_parameters(kp_http_server, all_parameter_defs):
     all_parameters = await action()
 
     for param in all_parameters['by_id'].values():
-        if param.param_type in ['data', 'octets', 'octets_read_only']:
+        if param.param_type in ['data', 'octets_read_only']:
             continue
         assert param is all_parameters['by_id'][param.id]
         assert param.id == all_parameter_defs[param.id]['param_id']
@@ -68,6 +69,17 @@ async def test_get_parameters(kp_http_server, all_parameter_defs):
         elif param.param_type == 'enum':
             assert isinstance(value, parameters.ParameterEnumItem)
             assert value.value == all_parameters['by_id'][param.id].default_value == all_parameter_defs[param.id]['default_value']
+        elif param.param_type == 'octets':
+            assert isinstance(value, ipaddress.IPv4Address)
+            param_val = all_parameter_defs[param.id].get('_value', all_parameter_defs[param.id]['default_value'])
+            if isinstance(param_val, int):
+                if param_val < 0:
+                    max_val = 1 << 32
+                    param_val += max_val
+                param_val = ipaddress.ip_address(param_val)
+            elif isinstance(param_val, str):
+                param_val = ipaddress.ip_address(param_val)
+            assert value == param_val
         else:
             assert value == all_parameter_defs[param.id].get('_value', all_parameter_defs[param.id]['default_value'])
 
@@ -85,7 +97,13 @@ async def test_get_parameters(kp_http_server, all_parameter_defs):
                 action2 = actions.GetParameter(host_address, parameter=param)
                 response2 = await action2()
                 assert response2 is response
-
+        elif param.param_type == 'octets':
+            ip = ipaddress.ip_address('192.168.1.123')
+            v = int.from_bytes(ip.packed, byteorder='big')
+            action = actions.SetParameter(host_address, parameter=param, value=v)
+            response = await action()
+            assert isinstance(response, ipaddress.IPv4Address)
+            assert response == ip
         else:
             action = actions.SetParameter(host_address, parameter=param, value='42')
             response = await action()
