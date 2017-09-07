@@ -71,7 +71,7 @@ class KpDevice(ObjectBase):
         await self.update_clips()
         self.connected = True
         self._update_loop_fut = asyncio.ensure_future(self._update_loop())
-    async def stop(self):
+    async def stop(self, close_session=True):
         if not self.connected:
             return
         self.connected = False
@@ -79,9 +79,9 @@ class KpDevice(ObjectBase):
         if fut is not None:
             await fut
             self._update_loop_fut = None
-        if self.session is not None:
+        if close_session and self.session is not None:
             self.session.close()
-            self.session = None
+        self.session = None
     async def _update_loop(self):
         async def inner(f, timeout):
             while self.connected:
