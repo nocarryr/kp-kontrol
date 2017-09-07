@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from kpkontrol import timecode
 
@@ -106,3 +107,43 @@ def test_timecode_set(frame_rate_defs):
         tc_counter += 1
         if tc_counter.hour.value >= 1 and tc_counter.minute.value > 0:
             break
+
+@pytest.mark.asyncio
+async def test_timecode_freerun(frame_rate_defs):
+    flt_val = frame_rate_defs['float']
+    frac_val = frame_rate_defs['fraction']
+
+    loop = asyncio.get_event_loop()
+
+    fr = timecode.FrameRate(frac_val.numerator, frac_val.denominator)
+    frame_format = timecode.FrameFormat(rate=fr)
+
+    tc = timecode.Timecode(frame_format=frame_format)
+
+    start_ts = loop.time()
+
+    await tc.start_freerun()
+
+    await asyncio.sleep(10)
+    total_seconds = tc.total_seconds
+    assert 9 <= tc.total_seconds <= 11
+
+    await tc.set_from_string_async('00:10:00:00')
+
+    await asyncio.sleep(10)
+    total_seconds = tc.total_seconds
+    assert 609 <= total_seconds <= 611
+
+    await tc.set_async(minutes=20, seconds=0, frames=0)
+
+    await asyncio.sleep(10)
+    total_seconds = tc.total_seconds
+    assert 1209 <= total_seconds <= 1211
+
+    stop_event = tc._freerun_stopped
+
+    await tc.stop_freerun()
+
+    assert stop_event.is_set()
+    assert tc._freerunning is None
+    assert tc._freerun_stopped is None
