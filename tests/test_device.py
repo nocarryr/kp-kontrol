@@ -86,35 +86,46 @@ async def test_dummy_device(kp_http_device_servers):
 
         await asyncio.sleep(1)
 
+        # current_clip was selected and loaded on the device
         assert device.transport.playing
         assert device.transport.clip.name == server.device.current_clip.name
         check_transport_state(device, server.device)
         assert device.transport.timecode is not None
 
+        # Roll for 5 seconds then pause
         await asyncio.sleep(5)
-
         await device.transport.pause()
         assert device.transport.paused
         check_transport_state(device, server.device)
+
+        # Wait for updates
         await asyncio.sleep(.2)
+
         assert str(device.transport.timecode) == str(server.device.timecode)
         assert device.transport.timecode > device.transport.clip.start_timecode
 
+        # Cue the device to the start timecode for the clip
         cue_tc = device.transport.clip.start_timecode.copy()
 
         await device.transport.go_to_timecode(cue_tc)
         await asyncio.sleep(1)
+
+        # Should be paused since it was previously
         assert device.transport.paused
         assert device.transport.timecode == cue_tc
 
+        # Roll for 5 seconds
         await device.transport.play()
         await asyncio.sleep(5)
-
         assert device.transport.playing
         assert device.transport.timecode > cue_tc
+
         now_tc = device.transport.timecode.copy()
 
         await device.transport.go_to_frame(cue_tc.total_frames)
+
+        # Should be playing since it was previously
+        # kpkontrol.device.Transport.go_to_timecode performs this logic
         assert device.transport.playing
         assert device.transport.timecode < now_tc
 
