@@ -194,7 +194,7 @@ class FakeDevice(object):
         param = self.parameters[param_id]
         value = self.get_parameter_value(param_id)
         if param_id == 'eParamID_NetworkServices':
-            d = {'services':value}
+            d = {'services':value, 'param_id':param_id}
         elif param.param_type == 'enum':
             if not len(param.enum_items):
                 d = {'param_id':param_id, 'int_value':value}
@@ -204,6 +204,25 @@ class FakeDevice(object):
         else:
             d = {'param_id':param_id, 'str_value':str(value), 'value':value, 'int_value':value}
         return d
+    async def build_network_services_data(self, devices):
+        l = []
+        for device in devices:
+            if ':' in device.host_address:
+                ip, port = device.host_address.split(':')
+            else:
+                ip = device.host_address
+                port = '80'
+            l.append({
+                'description':'Tapeless Recorder',
+                'boardType':'0',
+                'ip_address':ip,
+                'port':port,
+                'service_domain':'local',
+                'host_name':device.name,
+                'device_name':'Ki Pro',
+                'service_type':'_http._tcp',
+            })
+        await self.set_parameter_value('eParamID_NetworkServices', l)
     async def get_listen_events(self, connection_id):
         l = []
         if connection_id not in self.connections:

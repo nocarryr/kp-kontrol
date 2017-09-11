@@ -56,9 +56,12 @@ async def test_device(kp_http_server, all_parameter_defs):
 @pytest.mark.asyncio
 async def test_dummy_device(kp_http_device_servers):
 
+    server_devices = []
     for server in kp_http_device_servers.values():
         await server.start()
-
+        server_devices.append(server.device)
+    for device in server_devices[:]:
+        await device.build_network_services_data(server_devices)
 
     def check_transport_state(device, fake_device):
         assert device.transport.playing is fake_device.playing
