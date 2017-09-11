@@ -22,14 +22,16 @@ async def test_get_clips(kp_http_server):
     assert action.loop is loop is kp_http_server.loop
 
     assert isinstance(results, list)
-    assert len(results) == 1
+    assert len(results) == 2
+
+    for clip in results:
+        assert isinstance(clip, objects.Clip)
+        assert isinstance(clip.format, objects.ClipFormat)
+        assert isinstance(clip.format.frame_rate, timecode.FrameRate)
+        assert isinstance(clip.start_timecode, timecode.Timecode)
+        assert isinstance(clip.duration_tc, timecode.Timecode)
 
     clip = results[0]
-    assert isinstance(clip, objects.Clip)
-    assert isinstance(clip.format, objects.ClipFormat)
-    assert isinstance(clip.format.frame_rate, timecode.FrameRate)
-    assert isinstance(clip.start_timecode, timecode.Timecode)
-    assert isinstance(clip.duration_tc, timecode.Timecode)
 
     assert clip.name == 'A003SC10TK22.mov'
     assert clip.total_frames == 61429
@@ -43,6 +45,22 @@ async def test_get_clips(kp_http_server):
     assert str(clip.format) == '1920x1080i29.97'
     assert str(clip.start_timecode) == '18:25:06;12'
     assert str(clip.duration_tc) == '00:34:09:20'
+
+
+    clip = results[1]
+
+    assert clip.name == 'A003SC10TK23.mov'
+    assert clip.total_frames == 900
+    assert clip.timestamp == datetime.datetime(2017, 8, 6, 13, 0, 0)
+    assert clip.audio_channels == 2
+    assert clip.format.width == 1920
+    assert clip.format.height == 1080
+    assert clip.format.frame_rate.value == Fraction(30000, 1001)
+    assert clip.format.interlaced is True
+    assert clip.format.fourcc == 'apcn'
+    assert str(clip.format) == '1920x1080i29.97'
+    assert str(clip.start_timecode) == '00:00:00;00'
+    assert str(clip.duration_tc) == '00:00:30:00'
 
     await kp_http_server.stop()
 

@@ -104,6 +104,24 @@ KP_RESPONSE_DATA = [
                 "Encode Type": "0"
               },
               "framecount": "61429"
+            },
+            {"format": "1920x1080i29.97",
+              "timestamp": "08/06/17 13:00:00",
+              "height": "1080",
+              "duration": "00:00:30:00",
+              "clipname": "A003SC10TK23.mov",
+              "framerate": "29.97",
+              "width": "1920",
+              "interlace": "1",
+              "fourcc": "apcn",
+              "attributes": {
+                "Audio Chan": "2",
+                "CC": "0",
+                "Format": "1920x1080i29.97",
+                "Starting TC": "00:00:00;00",
+                "Encode Type": "0"
+              },
+              "framecount": "900"
             }
         ]}
         """,
