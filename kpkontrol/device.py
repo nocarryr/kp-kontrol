@@ -7,7 +7,12 @@ from pydispatch.properties import (
 from kpkontrol.base import ObjectBase
 from kpkontrol import actions
 from kpkontrol.parameters import ParameterBase
-from kpkontrol.objects import DeviceParameter, NetworkServicesParameter, Clip
+from kpkontrol.objects import (
+    DeviceParameter,
+    NetworkServicesParameter,
+    NetworkDevice,
+    Clip,
+)
 from kpkontrol.timecode import FrameRate, FrameFormat, Timecode
 
 class KpDevice(ObjectBase):
@@ -18,6 +23,7 @@ class KpDevice(ObjectBase):
     input_timecode = Property()
     connected = Property(False)
     parameters_received = Property(False)
+    network_host_device = Property()
     network_devices = DictProperty()
     __attribute_names = [
         'host_address', 'name', 'serial_number',
@@ -42,6 +48,7 @@ class KpDevice(ObjectBase):
     async def create(cls, **kwargs):
         obj = cls(**kwargs)
         await obj.connect()
+        return obj
     @property
     def session(self):
         return getattr(self, '_session', None)
@@ -69,7 +76,7 @@ class KpDevice(ObjectBase):
         await self.update_clips()
         self.connected = True
         self._update_loop_fut = asyncio.ensure_future(self._update_loop())
-    async def stop(self):
+    async def stop(self, close_session=True):
         if not self.connected:
             return
         self.connected = False
@@ -77,9 +84,9 @@ class KpDevice(ObjectBase):
         if fut is not None:
             await fut
             self._update_loop_fut = None
-        if self.session is not None:
+        if close_session and self.session is not None:
             self.session.close()
-            self.session = None
+        self.session = None
     async def _update_loop(self):
         async def inner(f, timeout):
             while self.connected:
@@ -88,6 +95,7 @@ class KpDevice(ObjectBase):
         coros = [
             inner(self.listen_for_events, .1),
             inner(self.update_clips, .5),
+            inner(self.update_gang_params, .5),
         ]
         await asyncio.wait(coros)
     async def _do_action(self, action_cls, **kwargs):
@@ -118,6 +126,11 @@ class KpDevice(ObjectBase):
         current = await self.get_parameter('eParamID_CurrentClip')
         if current in self.clips:
             self.transport.clip = self.clips[current]
+    async def update_gang_params(self):
+        for pid in ['GangEnable', 'GangMaster', 'GangList']:
+            pid = 'eParamID_{}'.format(pid)
+            p = self.all_parameters[pid]
+            await p.get_value()
     async def listen_for_events(self):
         await self._get_all_parameters()
         a = self.listen_action
@@ -159,6 +172,8 @@ class KpDevice(ObjectBase):
             self.serial_number = value
         self.emit('on_parameter_value', instance, value, **kwargs)
     def _on_network_device_added(self, device, **kwargs):
+        if device.is_host_device:
+            self.network_host_device = device
         self.network_devices[device.id] = device
         self.emit('on_network_device_added', self, device)
     def _on_network_device_removed(self, device, **kwargs):
@@ -183,6 +198,56 @@ class KpDevice(ObjectBase):
             parameter=parameter.parameter,
             value=value,
         )
+    async def create_gang(self, *members):
+        if not len(members):
+            members = [m for m in self.network_devices.values() if m is not self.network_host_device]
+        addrs = []
+        for member in members:
+            if isinstance(member, NetworkDevice):
+                addr = member.ip_address
+            device = await KpDevice.create(host_address=addr, loop=self.loop, session=self.session)
+            p = device.all_parameters['eParamID_GangEnable']
+            await p.set_value('ON')
+            await device.stop(close_session=False)
+            addrs.append(addr)
+
+        p = self.all_parameters['eParamID_GangEnable']
+        await p.set_value('ON')
+        await p.get_value()
+
+        p = self.all_parameters['eParamID_GangMaster']
+        await p.set_value('ON')
+        await p.get_value()
+
+        p = self.all_parameters['eParamID_GangList']
+        await p.set_value(','.join(addrs))
+        await p.get_value()
+
+    async def remove_gang(self):
+        for member in self.network_devices.values():
+            if member is self.network_host_device:
+                continue
+            addr = member.ip_address
+            device = await KpDevice.create(host_address=addr, loop=self.loop, session=self.session)
+            p = device.all_parameters['eParamID_GangMaster']
+            if p.value.name == 'ON':
+                await p.set_value('OFF')
+            p = device.all_parameters['eParamID_GangEnable']
+            await p.set_value('OFF')
+            await device.stop(close_session=False)
+
+        p = self.all_parameters['eParamID_GangMaster']
+        await p.set_value('OFF')
+        await p.get_value()
+
+        p = self.all_parameters['eParamID_GangEnable']
+        await p.set_value('OFF')
+        await p.get_value()
+
+        p = self.all_parameters['eParamID_GangList']
+        await p.set_value('')
+        await p.get_value()
+
 
 class KpTransport(ObjectBase):
     active = Property(False)
