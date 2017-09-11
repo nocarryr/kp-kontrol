@@ -7,6 +7,7 @@ from aiohttp import web
 
 import pytest
 
+from fake_device import FakeDevice
 
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -134,6 +135,12 @@ KP_RESPONSE_DATA = [
 
 
 class KPHttpHandler(object):
+    def __init__(self, **kwargs):
+        self.server = kwargs.get('server')
+    async def param_get_response(self, param_id):
+        return {'response':get_parameter_response_real_json(param_id)}
+    async def param_set_response(self, param_id, value):
+        return {'response':get_parameter_response_crap_json(param_id, value)}
     async def _get_data(self, request):
         u = request.url
         path = u.path
@@ -143,7 +150,7 @@ class KPHttpHandler(object):
             query = u.query
         if path == '/options':
             param_id = u.query_string.lstrip('?')
-            return {'response':get_parameter_response_real_json(param_id)}
+            return await self.param_get_response(param_id)
         elif path == '/config':
             param_id = query.getall('paramName')
             if isinstance(param_id, list):
@@ -151,7 +158,7 @@ class KPHttpHandler(object):
             value = query.getall('newValue')
             if isinstance(value, list):
                 value = value[0]
-            return {'response':get_parameter_response_crap_json(param_id, value)}
+            return await self.param_set_response(param_id, value)
         for resp_data in KP_RESPONSE_DATA:
             if resp_data['url_path'] != path:
                 continue
@@ -175,8 +182,42 @@ class KPHttpHandler(object):
         r = ''.join(resp_data['response'].splitlines())
         return web.Response(body=r, content_type='text/javascript')
 
+class KPDeviceHttpHandler(KPHttpHandler):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.device = self.server.device
+    async def param_get_response(self, param_id):
+        r = self.device.format_response(param_id)
+        return {'response':json.dumps(r)}
+    async def param_set_response(self, param_id, value):
+        r = await self.device.set_parameter_value(param_id, value)
+        return {'response':r}
+    async def _get_data(self, request):
+        u = request.url
+        path = u.path
+        if request.method == 'POST':
+            query = await request.post()
+        else:
+            query = u.query
+        if path == '/json':
+            action = query.getall('action')
+            if isinstance(action, list):
+                action = action[0]
+            if action == 'connect':
+                cid = str(len(self.device.connections))
+                return {'response':json.dumps({'connectionid':cid})}
+            elif action == 'wait_for_config_events':
+                cid = query.getall('connectionid')
+                if isinstance(cid, list):
+                    cid = cid[0]
+                cid = str(cid)
+                r = await self.device.get_listen_events(cid)
+                return {'response':r}
+        return await super()._get_data(request)
+
 
 class KPHttpServer(object):
+    handler_cls = KPHttpHandler
     def __init__(self, *args, **kwargs):
         pass
     async def start(self, loop=None):
@@ -190,7 +231,7 @@ class KPHttpServer(object):
         return self.host_address
     async def run(self):
         print(self.loop)
-        self.handler = KPHttpHandler()
+        self.handler = self.handler_cls(server=self)
         self.app = web.Application(loop=self.loop)
         for d in KP_RESPONSE_DATA:
             self.app.router.add_route('*', d['url_path'], self.handler.do_GET)
@@ -212,11 +253,55 @@ class KPHttpServer(object):
         self.running.clear()
         await self.run_coro
 
+class KPHttpDeviceServer(KPHttpServer):
+    handler_cls = KPDeviceHttpHandler
+    def __init__(self, **kwargs):
+        self.device = kwargs.get('device')
+        super().__init__(**kwargs)
+    async def start(self, loop=None):
+        host_address = await super().start(loop=loop)
+        self.device.host_address = host_address
+        # if not len(self.device.clips):
+        #     for d in KP_RESPONSE_DATA:
+        #         if d['url_path'] != '/clips':
+        #             continue
+        #         data = json.loads(d['response'])
+        #         self.device.parse_clips(data['clips'])
+        #         break
+        await self.device.start()
+        return host_address
+    async def stop(self):
+        await self.device.stop()
+        await super().stop()
+
 @pytest.fixture
 def kp_http_server():
     event_loop = asyncio.get_event_loop()
     server = KPHttpServer(loop=event_loop)
     return server
+
+@pytest.fixture
+def kp_http_device_servers():
+    event_loop = asyncio.get_event_loop()
+
+    for d in KP_RESPONSE_DATA:
+        if d['url_path'] != '/clips':
+            continue
+        clip_data = json.loads(d['response'])['clips']
+        break
+
+    servers = {}
+    for i in range(2):
+        device = FakeDevice(
+            name='FakeDevice_{}'.format(i),
+            serial_number='{:08}'.format(i),
+            parameter_defs=PARAMETER_DEFS,
+            clip_data=clip_data,
+        )
+        server = KPHttpDeviceServer(device=device, loop=event_loop)
+        servers[device.name] = server
+        print('server {} built'.format(device.name))
+    return servers
 
 FRAME_RATES = [
     (23.98, Fraction(24000, 1001)),
