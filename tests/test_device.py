@@ -96,7 +96,7 @@ async def test_dummy_device(kp_http_device_servers):
         await device.transport.pause()
         assert device.transport.paused
         check_transport_state(device, server.device)
-        await asyncio.sleep(.1)
+        await asyncio.sleep(.2)
         assert str(device.transport.timecode) == str(server.device.timecode)
         assert device.transport.timecode > device.transport.clip.start_timecode
 
