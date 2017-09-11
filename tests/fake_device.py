@@ -125,6 +125,10 @@ class FakeDevice(object):
                 state = 'Idle'
         elif cmd == 'Cue':
             state = 'Paused'
+        elif cmd == 'Single Step Forward':
+            state = 'Forward Step'
+        elif cmd == 'Single Step Reverse':
+            state = 'Reverse Step'
         else:
             ## TODO:
             state = 'Idle'
@@ -134,6 +138,22 @@ class FakeDevice(object):
         if old == state:
             return
         print('eParamID_TransportState: ', state)
+        if state == 'Forward Step':
+            if self.current_clip is None:
+                await self.set_formatted_value('eParamID_TransportState', 'Idle')
+                return
+            await self.timecode.stop_freerun()
+            self.timecode += 1
+            await self.set_formatted_value('eParamID_TransportState', 'Paused')
+            return
+        elif state == 'Reverse Step':
+            if self.current_clip is None:
+                await self.set_formatted_value('eParamID_TransportState', 'Idle')
+                return
+            await self.timecode.stop_freerun()
+            self.timecode -= 1
+            await self.set_formatted_value('eParamID_TransportState', 'Paused')
+            return
         self.playing = state == 'Playing Forward'
         self.paused = state == 'Paused'
         self.stopped = state == 'Idle'
