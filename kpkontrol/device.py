@@ -72,6 +72,7 @@ class KpDevice(ObjectBase):
             )
         return a
     async def connect(self):
+        self._listen_event = asyncio.Event()
         await self._get_all_parameters()
         await self.update_clips()
         self.connected = True
@@ -132,6 +133,7 @@ class KpDevice(ObjectBase):
             p = self.all_parameters[pid]
             await p.get_value()
     async def listen_for_events(self):
+        self._listen_event.clear()
         await self._get_all_parameters()
         a = self.listen_action
         events = await a()
@@ -139,6 +141,7 @@ class KpDevice(ObjectBase):
         for param_id, data in events.items():
             device_param = self.all_parameters[param_id]
             device_param.value = data['value']
+        self._listen_event.set()
     async def _get_all_parameters(self):
         if self.parameters_received:
             return

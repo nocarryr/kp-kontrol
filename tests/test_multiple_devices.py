@@ -52,7 +52,8 @@ async def test_dummy_device(kp_http_device_servers):
         check_transport_state(device, server.device)
 
         # Wait for updates
-        await asyncio.sleep(.2)
+        device._listen_event.clear()
+        await device._listen_event.wait()
 
         assert str(device.transport.timecode) == str(server.device.timecode)
         assert device.transport.timecode > device.transport.clip.start_timecode
@@ -61,7 +62,8 @@ async def test_dummy_device(kp_http_device_servers):
         cue_tc = device.transport.clip.start_timecode.copy()
 
         await device.transport.go_to_timecode(cue_tc)
-        await asyncio.sleep(.5)
+        device._listen_event.clear()
+        await device._listen_event.wait()
 
         # Should be paused since it was previously
         assert device.transport.paused
@@ -86,29 +88,34 @@ async def test_dummy_device(kp_http_device_servers):
         assert device.transport.paused
         check_transport_state(device, server.device)
 
-        await asyncio.sleep(.5)
+        device._listen_event.clear()
+        await device._listen_event.wait()
 
         # Single step forward and reverse
         now_tc = device.transport.timecode.copy()
 
         await device.transport.step_forward()
-        await asyncio.sleep(.3)
+        device._listen_event.clear()
+        await device._listen_event.wait()
 
         assert device.transport.timecode == now_tc + 1
 
         await device.transport.step_reverse()
-        await asyncio.sleep(.3)
+        device._listen_event.clear()
+        await device._listen_event.wait()
 
         assert device.transport.timecode == now_tc
 
         # Step 10 frames forward and reverse
         await device.transport.step_forward(10)
-        await asyncio.sleep(.3)
+        device._listen_event.clear()
+        await device._listen_event.wait()
 
         assert device.transport.timecode == now_tc + 10
 
         await device.transport.step_reverse(10)
-        await asyncio.sleep(.3)
+        device._listen_event.clear()
+        await device._listen_event.wait()
 
         assert device.transport.timecode == now_tc
 
