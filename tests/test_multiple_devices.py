@@ -13,6 +13,11 @@ async def test_dummy_device(kp_http_device_servers):
     for device in server_devices[:]:
         await device.build_network_services_data(server_devices)
 
+    async def wait_for_events(device, num_events=3):
+        for i in range(num_events):
+            device._listen_event.clear()
+            await device._listen_event.wait()
+
     def check_transport_state(device, fake_device):
         assert device.transport.playing is fake_device.playing
         assert device.transport.paused is fake_device.paused
@@ -48,12 +53,12 @@ async def test_dummy_device(kp_http_device_servers):
         # Roll for 5 seconds then pause
         await asyncio.sleep(5)
         await device.transport.pause()
+        await wait_for_events(device)
         assert device.transport.paused
         check_transport_state(device, server.device)
 
         # Wait for updates
-        device._listen_event.clear()
-        await device._listen_event.wait()
+        await wait_for_events(device)
 
         assert str(device.transport.timecode) == str(server.device.timecode)
         assert device.transport.timecode > device.transport.clip.start_timecode
@@ -62,8 +67,7 @@ async def test_dummy_device(kp_http_device_servers):
         cue_tc = device.transport.clip.start_timecode.copy()
 
         await device.transport.go_to_timecode(cue_tc)
-        device._listen_event.clear()
-        await device._listen_event.wait()
+        await wait_for_events(device)
 
         # Should be paused since it was previously
         assert device.transport.paused
@@ -78,6 +82,7 @@ async def test_dummy_device(kp_http_device_servers):
         now_tc = device.transport.timecode.copy()
 
         await device.transport.go_to_frame(cue_tc.total_frames)
+        await wait_for_events(device)
 
         # Should be playing since it was previously
         # kpkontrol.device.Transport.go_to_timecode performs this logic
@@ -85,37 +90,33 @@ async def test_dummy_device(kp_http_device_servers):
         assert device.transport.timecode < now_tc
 
         await device.transport.pause()
+        await wait_for_events(device)
+
         assert device.transport.paused
         check_transport_state(device, server.device)
-
-        device._listen_event.clear()
-        await device._listen_event.wait()
+        assert device.transport.timecode == server.device.timecode
 
         # Single step forward and reverse
         now_tc = device.transport.timecode.copy()
 
         await device.transport.step_forward()
-        device._listen_event.clear()
-        await device._listen_event.wait()
+        await wait_for_events(device)
 
         assert device.transport.timecode == now_tc + 1
 
         await device.transport.step_reverse()
-        device._listen_event.clear()
-        await device._listen_event.wait()
+        await wait_for_events(device)
 
         assert device.transport.timecode == now_tc
 
         # Step 10 frames forward and reverse
         await device.transport.step_forward(10)
-        device._listen_event.clear()
-        await device._listen_event.wait()
+        await wait_for_events(device)
 
         assert device.transport.timecode == now_tc + 10
 
         await device.transport.step_reverse(10)
-        device._listen_event.clear()
-        await device._listen_event.wait()
+        await wait_for_events(device)
 
         assert device.transport.timecode == now_tc
 
