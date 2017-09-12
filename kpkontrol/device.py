@@ -436,6 +436,8 @@ class KpTransport(ObjectBase):
         if timecode is None:
             timecode = self.timecode
         await timecode.stop_freerun()
+        param = self.timecode_param
+        self.on_parameter_value(param, param.value)
     def on_parameter_value(self, instance, value, **kwargs):
         param = self.transport_param_get
         if param is not None and param.id == instance.id:
@@ -449,7 +451,7 @@ class KpTransport(ObjectBase):
         tc = self.timecode
         if tc is None:
             return
-        if self.timecode_str == value:
+        if str(self.timecode) == value:
             return
         asyncio.ensure_future(tc.set_from_string_async(value), loop=self.loop)
     def process_transport_response(self, instance, value, **kwargs):
