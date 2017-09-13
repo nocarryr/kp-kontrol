@@ -261,13 +261,6 @@ class KPHttpDeviceServer(KPHttpServer):
     async def start(self, loop=None):
         host_address = await super().start(loop=loop)
         self.device.host_address = host_address
-        # if not len(self.device.clips):
-        #     for d in KP_RESPONSE_DATA:
-        #         if d['url_path'] != '/clips':
-        #             continue
-        #         data = json.loads(d['response'])
-        #         self.device.parse_clips(data['clips'])
-        #         break
         await self.device.start()
         return host_address
     async def stop(self):
@@ -276,13 +269,11 @@ class KPHttpDeviceServer(KPHttpServer):
 
 @pytest.fixture
 def kp_http_server():
-    event_loop = asyncio.get_event_loop()
-    server = KPHttpServer(loop=event_loop)
+    server = KPHttpServer()
     return server
 
 @pytest.fixture
 def kp_http_device_servers():
-    event_loop = asyncio.get_event_loop()
 
     for d in KP_RESPONSE_DATA:
         if d['url_path'] != '/clips':
@@ -298,7 +289,7 @@ def kp_http_device_servers():
             parameter_defs=PARAMETER_DEFS,
             clip_data=clip_data,
         )
-        server = KPHttpDeviceServer(device=device, loop=event_loop)
+        server = KPHttpDeviceServer(device=device)
         servers[device.name] = server
         print('server {} built'.format(device.name))
     return servers
