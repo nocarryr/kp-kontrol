@@ -113,8 +113,7 @@ class Timecode(Frame, ObjectBase):
             await asyncio.sleep(next_timeout)
         self._freerun_stopped.set()
     async def set_async(self, **kwargs):
-        e = getattr(self, '_freerunning', None)
-        if e is not None and e.is_set():
+        if hasattr(self, 'freerun_lock'):
             async with self.freerun_lock:
                 prev_frames = self.total_frames
                 self.set(**kwargs)
@@ -129,8 +128,7 @@ class Timecode(Frame, ObjectBase):
         else:
             self.set(**kwargs)
     async def set_from_string_async(self, tc_str):
-        e = getattr(self, '_freerunning', None)
-        if e is not None and e.is_set():
+        if hasattr(self, 'freerun_lock'):
             async with self.freerun_lock:
                 self.freerun_start_ts = self.loop.time()
                 self.freerun_nframes = 0

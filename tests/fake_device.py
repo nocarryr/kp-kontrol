@@ -58,11 +58,12 @@ class FakeDevice(object):
             await asyncio.sleep(.1)
     async def stop(self):
         self._running = False
-        if getattr(self, '_run_coro', None):
-            await self._run_coro
         tc = self.timecode
         if tc is not None:
+            tc.unbind(self)
             await tc.stop_freerun()
+        if getattr(self, '_run_coro', None):
+            await self._run_coro
         self.timecode = None
         self._run_coro = None
     def _build_parameters(self, parameter_defs):
@@ -80,6 +81,7 @@ class FakeDevice(object):
         return self._timecode
     @timecode.setter
     def timecode(self, tc):
+        self._timecode = tc
         old = self.timecode
         if old is not None and self._running:
             old.unbind(self)
@@ -94,6 +96,8 @@ class FakeDevice(object):
         clip_name = self.get_formatted_value('eParamID_CurrentClip')
         return self.clips.get(clip_name)
     def on_timecode_change(self, tc, total_frames, **kwargs):
+        if tc is not self.timecode:
+            return
         asyncio.ensure_future(self.set_formatted_value('eParamID_DisplayTimecode', str(tc)))
     async def update_current_clip(self, old):
         clip = self.current_clip
@@ -186,7 +190,7 @@ class FakeDevice(object):
         elif param_id == 'eParamID_GoToClip':
             await self.set_formatted_value('eParamID_TransportState', 'Idle')
             await self.set_parameter_value('eParamID_CurrentClip', value)
-            await self.set_parameter_value('eParamID_TransportState', 'Paused')
+            await self.set_formatted_value('eParamID_TransportState', 'Paused')
         elif param_id == 'eParamID_CueToTimecode':
             await self.cue_to_timecode(value)
         elif param_id == 'eParamID_CurrentClip':
@@ -212,7 +216,10 @@ class FakeDevice(object):
         await self.set_parameter_value(param_id, value)
     def format_response(self, param_id):
         param = self.parameters[param_id]
-        value = self.get_parameter_value(param_id)
+        if param_id == 'eParamID_DisplayTimecode' and self.timecode is not None:
+            value = str(self.timecode)
+        else:
+            value = self.get_parameter_value(param_id)
         if param_id == 'eParamID_NetworkServices':
             d = {'services':value, 'param_id':param_id}
         elif param.param_type == 'enum':

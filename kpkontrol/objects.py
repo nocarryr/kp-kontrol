@@ -182,12 +182,16 @@ class NetworkDevice(ObjectBase):
         if self.is_host_device:
             self.gang_enabled = str(all_params['eParamID_GangEnable'].value) == 'ON'
             self.gang_master = str(all_params['eParamID_GangMaster'].value) == 'ON'
-            for addr in all_params['eParamID_GangList'].value.split(','):
+            addrs = all_params['eParamID_GangList'].value.split(',')
+            for addr in addrs:
                 if addr in self.gang_members:
                     continue
                 d = self.device.network_devices.get(addr)
                 if d is not None:
                     self.gang_members[addr] = d
+            to_remove = set(self.gang_members.keys()) - set(addrs)
+            for addr in to_remove:
+                del self.gang_members[addr]
         else:
             self.gang_enabled = self.ip_address in all_params['eParamID_GangList'].value
     def on_device_parameter_value(self, instance, value, **kwargs):

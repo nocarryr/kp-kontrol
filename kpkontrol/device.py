@@ -72,6 +72,7 @@ class KpDevice(ObjectBase):
             )
         return a
     async def connect(self):
+        self._listen_event = asyncio.Event()
         await self._get_all_parameters()
         await self.update_clips()
         self.connected = True
@@ -132,6 +133,7 @@ class KpDevice(ObjectBase):
             p = self.all_parameters[pid]
             await p.get_value()
     async def listen_for_events(self):
+        self._listen_event.clear()
         await self._get_all_parameters()
         a = self.listen_action
         events = await a()
@@ -139,6 +141,7 @@ class KpDevice(ObjectBase):
         for param_id, data in events.items():
             device_param = self.all_parameters[param_id]
             device_param.value = data['value']
+        self._listen_event.set()
     async def _get_all_parameters(self):
         if self.parameters_received:
             return
@@ -204,7 +207,7 @@ class KpDevice(ObjectBase):
         addrs = []
         for member in members:
             if isinstance(member, NetworkDevice):
-                addr = member.ip_address
+                addr = member.host_address
             device = await KpDevice.create(host_address=addr, loop=self.loop, session=self.session)
             p = device.all_parameters['eParamID_GangEnable']
             await p.set_value('ON')
@@ -227,7 +230,7 @@ class KpDevice(ObjectBase):
         for member in self.network_devices.values():
             if member is self.network_host_device:
                 continue
-            addr = member.ip_address
+            addr = member.host_address
             device = await KpDevice.create(host_address=addr, loop=self.loop, session=self.session)
             p = device.all_parameters['eParamID_GangMaster']
             if p.value.name == 'ON':
@@ -433,6 +436,8 @@ class KpTransport(ObjectBase):
         if timecode is None:
             timecode = self.timecode
         await timecode.stop_freerun()
+        param = self.timecode_param
+        self.on_parameter_value(param, param.value)
     def on_parameter_value(self, instance, value, **kwargs):
         param = self.transport_param_get
         if param is not None and param.id == instance.id:
@@ -446,7 +451,7 @@ class KpTransport(ObjectBase):
         tc = self.timecode
         if tc is None:
             return
-        if self.timecode_str == value:
+        if str(self.timecode) == value:
             return
         asyncio.ensure_future(tc.set_from_string_async(value), loop=self.loop)
     def process_transport_response(self, instance, value, **kwargs):
