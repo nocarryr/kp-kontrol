@@ -150,6 +150,16 @@ async def test_timecode_freerun(frame_rate_defs):
     total_seconds = await calc_total_seconds(tc)
     assert expected-1 <= total_seconds <= expected+1
 
+    # Roll back to '00:05:00:00'
+    await tc.set_async(minutes=5, seconds=0, frames=0)
+    total_seconds = await calc_total_seconds(tc)
+    expected = total_seconds + 10
+    print('expected: ', expected)
+
+    await asyncio.sleep(10)
+    total_seconds = await calc_total_seconds(tc)
+    assert expected-1 <= total_seconds <= expected+1
+
     stop_event = tc._freerun_stopped
 
     await tc.stop_freerun()
