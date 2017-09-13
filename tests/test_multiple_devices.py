@@ -120,6 +120,25 @@ async def test_dummy_device(kp_http_device_servers):
 
         assert device.transport.timecode == now_tc
 
+        # Load a clip and check transport and timecode states
+        next_clip = None
+        for clip in device.clips.values():
+            if clip.name == device.transport.clip.name:
+                continue
+            next_clip = clip
+            break
+        assert next_clip is not None
+
+        await device.transport.go_to_clip(next_clip.name)
+        await wait_for_events(device)
+
+        assert device.transport.clip is next_clip
+        assert device.transport.paused
+        check_transport_state(device, server.device)
+
+        assert device.transport.timecode == next_clip.start_timecode
+        assert device.transport.timecode == server.device.timecode
+
     for device in devices.values():
         await device.stop(close_session=False)
     session.close()
