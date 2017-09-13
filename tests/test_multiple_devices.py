@@ -144,3 +144,70 @@ async def test_dummy_device(kp_http_device_servers):
     session.close()
     for server in kp_http_device_servers.values():
         await server.stop()
+
+@pytest.mark.asyncio
+async def test_device_gang(kp_http_device_servers):
+
+    server_devices = []
+    for server in kp_http_device_servers.values():
+        await server.start()
+        server_devices.append(server.device)
+    for device in server_devices[:]:
+        await device.build_network_services_data(server_devices)
+
+    devices = {}
+    session = None
+    for device_name, server in kp_http_device_servers.items():
+        device = await KpDevice.create(host_address=server.host_address, session=session)
+        if session is None:
+            session = device.session
+        devices[device_name] = device
+
+        await asyncio.sleep(1)
+
+        for network_device in device.network_devices.values():
+            assert network_device.host_name in kp_http_device_servers.keys()
+            assert network_device.host_address == kp_http_device_servers[network_device.host_name].host_address
+            if network_device.host_name == device_name:
+                assert network_device.is_host_device
+                assert network_device is device.network_host_device
+            else:
+                assert network_device.is_host_device is False
+
+    master_name = sorted(kp_http_device_servers.keys())[0]
+    master_device = devices[master_name]
+
+
+    await master_device.create_gang()
+
+    assert master_device.network_host_device.gang_enabled
+    assert master_device.network_host_device.gang_master
+
+    for device in devices.values():
+        if device is master_device:
+            continue
+        await device.update_gang_params()
+        assert device.network_host_device.gang_enabled
+        assert not device.network_host_device.gang_master
+        assert device.network_host_device.host_address in master_device.network_host_device.gang_members
+
+
+    await master_device.remove_gang()
+
+    assert not master_device.network_host_device.gang_enabled
+    assert not master_device.network_host_device.gang_master
+    assert not len(master_device.network_host_device.gang_members)
+
+    for device in devices.values():
+        if device is master_device:
+            continue
+        await device.update_gang_params()
+        assert not device.network_host_device.gang_enabled
+        assert not device.network_host_device.gang_master
+
+
+    for device in devices.values():
+        await device.stop(close_session=False)
+    session.close()
+    for server in kp_http_device_servers.values():
+        await server.stop()
