@@ -190,7 +190,7 @@ class FakeDevice(object):
         elif param_id == 'eParamID_GoToClip':
             await self.set_formatted_value('eParamID_TransportState', 'Idle')
             await self.set_parameter_value('eParamID_CurrentClip', value)
-            await self.set_parameter_value('eParamID_TransportState', 'Paused')
+            await self.set_formatted_value('eParamID_TransportState', 'Paused')
         elif param_id == 'eParamID_CueToTimecode':
             await self.cue_to_timecode(value)
         elif param_id == 'eParamID_CurrentClip':
