@@ -207,7 +207,7 @@ class KpDevice(ObjectBase):
         addrs = []
         for member in members:
             if isinstance(member, NetworkDevice):
-                addr = member.ip_address
+                addr = member.host_address
             device = await KpDevice.create(host_address=addr, loop=self.loop, session=self.session)
             p = device.all_parameters['eParamID_GangEnable']
             await p.set_value('ON')
@@ -230,7 +230,7 @@ class KpDevice(ObjectBase):
         for member in self.network_devices.values():
             if member is self.network_host_device:
                 continue
-            addr = member.ip_address
+            addr = member.host_address
             device = await KpDevice.create(host_address=addr, loop=self.loop, session=self.session)
             p = device.all_parameters['eParamID_GangMaster']
             if p.value.name == 'ON':
