@@ -115,6 +115,11 @@ async def test_timecode_freerun(frame_rate_defs):
 
     loop = asyncio.get_event_loop()
 
+    async def calc_total_seconds(tc):
+        async with tc.freerun_lock:
+            total_frames = tc.total_frames
+        return float(total_frames / tc.frame_format.rate)
+
     fr = timecode.FrameRate(frac_val.numerator, frac_val.denominator)
     frame_format = timecode.FrameFormat(rate=fr)
 
@@ -125,19 +130,19 @@ async def test_timecode_freerun(frame_rate_defs):
     await tc.start_freerun()
 
     await asyncio.sleep(10)
-    total_seconds = tc.total_seconds
-    assert 9 <= tc.total_seconds <= 11
+    total_seconds = await calc_total_seconds(tc)
+    assert 9 <= total_seconds <= 11
 
     await tc.set_from_string_async('00:10:00:00')
 
     await asyncio.sleep(10)
-    total_seconds = tc.total_seconds
+    total_seconds = await calc_total_seconds(tc)
     assert 609 <= total_seconds <= 611
 
     await tc.set_async(minutes=20, seconds=0, frames=0)
 
     await asyncio.sleep(10)
-    total_seconds = tc.total_seconds
+    total_seconds = await calc_total_seconds(tc)
     assert 1209 <= total_seconds <= 1211
 
     stop_event = tc._freerun_stopped
