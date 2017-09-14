@@ -41,6 +41,14 @@ class ClipList(BoxLayout):
     def __init__(self, **kwargs):
         self.group_name = '{}-list_items'.format(id(self))
         super().__init__(**kwargs)
+    def on_app(self, *args):
+        self.app.bind(on_device_disconnect=self.on_device_disconnect)
+    def on_device_disconnect(self, instance, device):
+        if device is self.device:
+            self.device = device
+        if device is not None:
+            device.unbind(self)
+            device.transport.unbind(self)
     def on_list_widget(self, *args):
         self.list_widget.bind(minimum_height=self.list_widget.setter('height'))
     def on_device(self, *args):

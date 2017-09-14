@@ -29,8 +29,15 @@ class TransportWidget(BoxLayout):
     timecode_str = StringProperty('00:00:00:00')
     timecode_remaining_str = StringProperty('--:--:--:--')
     __events__ = ['on_btn_release']
+    def on_app(self, *args):
+        self.app.bind(on_device_disconnect=self.on_device_disconnect)
+    def on_device_disconnect(self, instance, device):
+        if device is self.device:
+            self.device = device
+        if device is not None:
+            device.unbind(self)
+            device.transport.unbind(self)
     def on_connected(self, instance, value):
-        print('transport_widget connected: ', value, self.device)
         if not value:
             return
         attrs = [
@@ -66,6 +73,8 @@ class TransportWidget(BoxLayout):
         # if instance is not self.device.transport:
         #     return
         # print(instance, value)
+        if self.device is None:
+            return
         prop_name = kwargs['property'].name
         setattr(self, prop_name, value)
         if prop_name == 'timecode_str':

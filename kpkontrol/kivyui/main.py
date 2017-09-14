@@ -86,6 +86,7 @@ class RootWidget(FloatLayout):
             self.device.unbind(self)
             self.device_name = ''
             self.app.run_async_coro(self.device.stop())
+            self.app.dispatch('on_device_disconnect', self.device)
             self.device = None
     def on_device_connected(self, instance, value, **kwargs):
         if instance is not self.device:
@@ -108,12 +109,15 @@ class KpKontrolApp(App):
     btn_flash = BooleanProperty(False)
     storage = ObjectProperty(None)
     _config_base_dir = None
+    __events__ = ['on_device_disconnect']
     @property
     def config_base_dir(self):
         p = self._config_base_dir
         if p is None:
             p = self._config_base_dir = self.user_data_dir
         return p
+    def on_device_disconnect(self, *args, **kwargs):
+        pass
     def on_start(self, *args, **kwargs):
         self.storage = self.get_application_storage()
         if self.aio_loop is None:
