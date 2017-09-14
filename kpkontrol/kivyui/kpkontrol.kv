@@ -22,14 +22,15 @@ RootWidget:
                 elif not self.connected and root.connected: root.disconnect()
         BoxLayout:
             id: main_widget
-            size_hint_y: .8
+            size_hint_y: .92
             DeviceWidget:
                 id: device_widget
                 device: root.device
                 connected: root.connected
         FooterWidget:
             id: footer_widget
-            size_hint_y: .1
+            size_hint_y: .08
+            device_name: root.device_name
 
 <HeaderWidget@BoxLayout>:
     app: app
@@ -37,21 +38,26 @@ RootWidget:
     host_address: ''
     device_name: ''
     connected: False
-    Label:
-        text: 'Device Address'
-    TextInput:
-        multiline: False
-        text: root.host_address
-        on_focus: if not self.focus: root.host_address = self.text
-    Label:
-        text: root.device_name
+    BoxLayout:
+        orientation: 'horizontal'
+        size_hint_x: .3
+        Label:
+            text: 'Device Address'
+            font_size: '13sp'
+            size_hint_x: .4
+        TextInput:
+            size_hint_x: .5
+            multiline: False
+            text: root.host_address
+            on_focus: if not self.focus: root.host_address = self.text
+    Widget:
+        size_hint_x: .3
     Button:
-        text: 'Network Devices'
-        on_release: app.root.device_selector.open(self)
-    Button:
+        size_hint_x: .2
         text: 'Disconnect' if root.connected else 'Connect'
         on_release: root.connected = not root.connected
     Button:
+        size_hint_x: .2
         text: 'Settings'
         on_release: app.open_settings()
 
@@ -65,12 +71,24 @@ RootWidget:
 
 <FooterWidget@BoxLayout>:
     orientation: 'horizontal'
+    device_name: ''
+    Label:
+        font_size: '13sp'
+        text: root.device_name
+    Button:
+        text: 'Network Devices'
+        on_release: app.root.device_selector.open(self)
 
 <DeviceWidget>:
     app: app
     orientation: 'vertical'
     transport_widget: transport_widget
     clip_list: clip_list
+    canvas.before:
+        Color:
+            rgba: (1, 1, 1, 1)
+        Line:
+            rectangle: (self.x, self.y, self.width, self.height)
     ClipList:
         id: clip_list
         size_hint_y: .5
