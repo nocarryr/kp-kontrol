@@ -18,8 +18,8 @@ RootWidget:
             on_host_address: root.host_address = self.host_address
             connected: root.connected
             on_connected:
-                if self.connected: root.connect()
-                else: root.disconnect()
+                if self.connected and not root.connected: root.connect()
+                elif not self.connected and root.connected: root.disconnect()
         BoxLayout:
             id: main_widget
             size_hint_y: .8
@@ -46,11 +46,22 @@ RootWidget:
     Label:
         text: root.device_name
     Button:
+        text: 'Network Devices'
+        on_release: app.root.device_selector.open(self)
+    Button:
         text: 'Disconnect' if root.connected else 'Connect'
         on_release: root.connected = not root.connected
     Button:
         text: 'Settings'
         on_release: app.open_settings()
+
+<DeviceSelector>:
+
+<DeviceSelectorButton>:
+    text: self.name
+    size_hint_y: None
+    height: '40dp'
+    background_color: [.5,.5,.5,1] if self.is_selected else [1,1,1,1]
 
 <FooterWidget@BoxLayout>:
     orientation: 'horizontal'

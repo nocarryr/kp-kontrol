@@ -27,6 +27,8 @@ from kivy.properties import (
 from kivy.storage.jsonstore import JsonStore
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.dropdown import DropDown
+from kivy.uix.button import Button
 
 from kpkontrol.kivyui.aiobridge import AioBridge
 from kpkontrol.kivyui.transport import TransportWidget
@@ -56,6 +58,7 @@ APP_SETTINGS_DEFAULTS = {
 class RootWidget(FloatLayout):
     app = ObjectProperty(None)
     header_widget = ObjectProperty(None)
+    device_selector = ObjectProperty(None)
     main_widget = ObjectProperty(None)
     device_widget = ObjectProperty(None)
     footer_widget = ObjectProperty(None)
@@ -65,6 +68,10 @@ class RootWidget(FloatLayout):
     host_address = ConfigParserProperty(
         '', 'device', 'host_address', 'app', val_type=str,
     )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.device_selector = DeviceSelector()
+        self.device_selector.bind(on_select=self.on_device_selector_selected)
     def connect(self, *args, **kwargs):
         if self.connected:
             self.disconnect()
@@ -78,6 +85,8 @@ class RootWidget(FloatLayout):
             device,
             name=self.on_device_obj_name,
             connected=self.on_device_connected,
+            on_network_device_added=self.on_device_network_device_added,
+            on_network_device_removed=self.on_device_network_device_removed,
         )
         self.app.run_async_coro(device.connect())
     def disconnect(self, *args, **kwargs):
@@ -94,6 +103,58 @@ class RootWidget(FloatLayout):
         self.connected = value
     def on_device_obj_name(self, instance, value, **kwargs):
         self.device_name = value
+    def on_device_network_device_added(self, instance, network_device, **kwargs):
+        self.device_selector.add_device(network_device)
+    def on_device_network_device_removed(self, instance, network_device, **kwargs):
+        pass
+    def on_device_selector_selected(self, instance, btn):
+        self.disconnect()
+        self.host_address = btn.host_address
+        self.connect()
+
+class DeviceSelector(DropDown):
+    app = ObjectProperty(None)
+    btns = DictProperty()
+    selected_device_id = StringProperty()
+    def add_device(self, device, **kwargs):
+        if device.id in self.btns:
+            return
+        d = dict(
+            dropdown_parent=self,
+            device_id=device.id,
+            name=device.host_name,
+            ip_address=device.ip_address,
+            port=device.port,
+            host_address=device.host_address,
+            is_selected=device.is_host_device,
+        )
+        for key, val in d.items():
+            kwargs.setdefault(key, val)
+        btn = DeviceSelectorButton(**kwargs)
+        self.btns[device.id] = btn
+        self.add_widget(btn)
+    def on_device_btn_selected(self, btn, value):
+        if not value:
+            return
+        self.selected_device_id = btn.device_id
+        self.select(btn)
+
+class DeviceSelectorButton(Button):
+    dropdown_parent = ObjectProperty()
+    device_id = StringProperty()
+    name = StringProperty()
+    ip_address = ObjectProperty()
+    port = NumericProperty()
+    host_address = StringProperty()
+    is_selected = BooleanProperty(False)
+    def on_release(self, *args):
+        if self.is_selected:
+            return
+        self.dropdown_parent.on_device_btn_selected(self, True)
+    def on_dropdown_parent(self, *args):
+        self.dropdown_parent.bind(selected_device_id=self.on_selected_device_id)
+    def on_selected_device_id(self, instance, value):
+        self.is_selected = value == self.device_id
 
 class DeviceWidget(BoxLayout):
     app = ObjectProperty(None)
