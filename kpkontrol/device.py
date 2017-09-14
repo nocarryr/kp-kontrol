@@ -279,9 +279,6 @@ class KpTransport(ObjectBase):
         'paused':False,
         'shuttle':False,
     }
-    # _timecode_param = 'eParamID_DisplayTimecode'
-    # _transport_param_get = 'eParamID_TransportState'
-    # _transport_param_set = 'eParamID_TransportCommand'
     def __init__(self, **kwargs):
         self.bind(
             clip=self.on_clip,

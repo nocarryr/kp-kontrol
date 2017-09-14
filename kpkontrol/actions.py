@@ -12,15 +12,6 @@ from kpkontrol.parameters import (
 )
 from kpkontrol.objects import Clip
 
-class RequestError(Exception):
-    def __init__(self, req):
-        self.status_code = req.status_code
-        self.url = req.url
-        self.reason = req.reason
-    def __str__(self):
-        return '{self.url} responded with STATUS_CODE: "{self.status_code}" ({self.reason})'.format(
-            self=self
-        )
 
 class Action(object):
     _url_path = '/'
@@ -73,8 +64,6 @@ class Action(object):
             r = await self.session.post(url, data=self.query_params)
         else:
             raise Exception('{} method not supported'.format(self.method))
-        # if not r.ok:
-        #     raise RequestError(r)
         return r
     @classmethod
     def iter_bases(cls):
