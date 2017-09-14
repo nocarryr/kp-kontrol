@@ -35,7 +35,7 @@ setup(
     license='GPLv3',
     packages=find_packages(exclude=['tests*']),
     install_requires=[
-        'requests',
+        'aiohttp',
         'python-dispatch',
         'python-ltc>=0.0.3',
     ],
@@ -50,10 +50,6 @@ setup(
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Topic :: Software Development',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
     ],
 )

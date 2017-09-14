@@ -1,22 +1,13 @@
 import os
-import sys
-import io
-import threading
-import shutil
+import asyncio
 import json
 from fractions import Fraction
-try:
-    from urllib import urlencode
-    from urlparse import urlunsplit, urlsplit, parse_qs
-    from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
-except ImportError:
-    from urllib.parse import urlencode, urlunsplit, urlsplit, parse_qs
-    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+from aiohttp import web
 
 import pytest
 
-PY3 = sys.version_info.major >= 3
-
+from fake_device import FakeDevice
 
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -114,6 +105,24 @@ KP_RESPONSE_DATA = [
                 "Encode Type": "0"
               },
               "framecount": "61429"
+            },
+            {"format": "1920x1080i29.97",
+              "timestamp": "08/06/17 13:00:00",
+              "height": "1080",
+              "duration": "00:00:30:00",
+              "clipname": "A003SC10TK23.mov",
+              "framerate": "29.97",
+              "width": "1920",
+              "interlace": "1",
+              "fourcc": "apcn",
+              "attributes": {
+                "Audio Chan": "2",
+                "CC": "0",
+                "Format": "1920x1080i29.97",
+                "Starting TC": "00:00:00;00",
+                "Encode Type": "0"
+              },
+              "framecount": "900"
             }
         ]}
         """,
@@ -125,84 +134,165 @@ KP_RESPONSE_DATA = [
 ]
 
 
-class KPHttpHandler(BaseHTTPRequestHandler):
-    def _get_data(self):
-        p = urlsplit(self.path)
-        path = p.path
-        if p.query:
-            query = parse_qs(p.query)
+class KPHttpHandler(object):
+    def __init__(self, **kwargs):
+        self.server = kwargs.get('server')
+    async def param_get_response(self, param_id):
+        return {'response':get_parameter_response_real_json(param_id)}
+    async def param_set_response(self, param_id, value):
+        return {'response':get_parameter_response_crap_json(param_id, value)}
+    async def _get_data(self, request):
+        u = request.url
+        path = u.path
+        if request.method == 'POST':
+            query = await request.post()
         else:
-            query = None
+            query = u.query
         if path == '/options':
-            param_id = p.query.lstrip('?')
-            return {'response':get_parameter_response_real_json(param_id)}
+            param_id = u.query_string.lstrip('?')
+            return await self.param_get_response(param_id)
         elif path == '/config':
-            param_id = query.get('paramName')
+            param_id = query.getall('paramName')
             if isinstance(param_id, list):
                 param_id = param_id[0]
-            value = query.get('newValue')
+            value = query.getall('newValue')
             if isinstance(value, list):
                 value = value[0]
-            return {'response':get_parameter_response_crap_json(param_id, value)}
+            return await self.param_set_response(param_id, value)
         for resp_data in KP_RESPONSE_DATA:
             if resp_data['url_path'] != path:
                 continue
-            if resp_data.get('query_params') and resp_data['query_params'] != query:
-                continue
+            if resp_data.get('query_params'):
+                if set(resp_data['query_params'].keys()) != set(query.keys()):
+                    continue
+                match = True
+                for key, val in resp_data['query_params'].items():
+                    if query.getall(key) != val:
+                        match = False
+                        break
+                if not match:
+                    continue
             return resp_data
         return None
-    def do_GET(self):
-        resp_data = self._get_data()
+    async def do_GET(self, request):
+        resp_data = await self._get_data(request)
         if resp_data is None:
-            self.send_error(404, 'Not Found')
-            return None
-        r = ''.join(resp_data['response'].splitlines())
-        if PY3:
-            f = io.BytesIO()
-            f.write(bytes(r, 'UTF-8'))
-        else:
-            f = io.StringIO()
-            f.write(r.decode('UTF-8'))
-        length = f.tell()
-        f.seek(0)
-        self.send_response(200)
-        self.send_header("Content-type", 'text/javascript')
-        self.send_header("Content-Length", str(length))
-        self.end_headers()
-        try:
-            shutil.copyfileobj(f, self.wfile)
-        finally:
-            f.close()
+            raise web.HTTPNotFound(text='Not Found')
 
-class KPHttpServerThread(threading.Thread):
-    def __init__(self):
-        super(KPHttpServerThread, self).__init__()
-        self.running = threading.Event()
-        self.server = None
-        self.port = None
-    def run(self):
-        self.server = HTTPServer(('localhost', 0), KPHttpHandler)
-        self.port = self.server.server_port
+        r = ''.join(resp_data['response'].splitlines())
+        return web.Response(body=r, content_type='text/javascript')
+
+class KPDeviceHttpHandler(KPHttpHandler):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.device = self.server.device
+    async def param_get_response(self, param_id):
+        r = self.device.format_response(param_id)
+        return {'response':json.dumps(r)}
+    async def param_set_response(self, param_id, value):
+        r = await self.device.set_parameter_value(param_id, value)
+        return {'response':r}
+    async def _get_data(self, request):
+        u = request.url
+        path = u.path
+        if request.method == 'POST':
+            query = await request.post()
+        else:
+            query = u.query
+        if path == '/json':
+            action = query.getall('action')
+            if isinstance(action, list):
+                action = action[0]
+            if action == 'connect':
+                cid = str(len(self.device.connections))
+                return {'response':json.dumps({'connectionid':cid})}
+            elif action == 'wait_for_config_events':
+                cid = query.getall('connectionid')
+                if isinstance(cid, list):
+                    cid = cid[0]
+                cid = str(cid)
+                r = await self.device.get_listen_events(cid)
+                return {'response':r}
+        return await super()._get_data(request)
+
+
+class KPHttpServer(object):
+    handler_cls = KPHttpHandler
+    def __init__(self, *args, **kwargs):
+        pass
+    async def start(self, loop=None):
+        if loop is None:
+            loop = asyncio.get_event_loop()
+        self.loop = loop
+        self.running = asyncio.Event()
+        self.run_coro = asyncio.ensure_future(self.run())
+        await self.running.wait()
+        self.host_address = '{self.host}:{self.port}'.format(self=self)
+        return self.host_address
+    async def run(self):
+        print(self.loop)
+        self.handler = self.handler_cls(server=self)
+        self.app = web.Application(loop=self.loop)
+        for d in KP_RESPONSE_DATA:
+            self.app.router.add_route('*', d['url_path'], self.handler.do_GET)
+        self.w_server = web.Server(self.handler.do_GET)
+        self.server = await self.loop.create_server(self.w_server, '127.0.0.1', 0)
+        self.host, self.port = self.server.sockets[0].getsockname()
+
         self.running.set()
-        self.server.serve_forever()
-        self.running.clear()
-    def stop(self):
+        while self.running.is_set():
+            await asyncio.sleep(.1)
+
+        await self.w_server.shutdown()
+        self.server.close()
+        await self.server.wait_closed()
+        self.server = None
+    async def stop(self):
         if not self.running.is_set():
             return
-        if self.server is None:
-            return
-        self.server.shutdown()
-        self.server.server_close()
-        self.server = None
+        self.running.clear()
+        await self.run_coro
+
+class KPHttpDeviceServer(KPHttpServer):
+    handler_cls = KPDeviceHttpHandler
+    def __init__(self, **kwargs):
+        self.device = kwargs.get('device')
+        super().__init__(**kwargs)
+    async def start(self, loop=None):
+        host_address = await super().start(loop=loop)
+        self.device.host_address = host_address
+        await self.device.start()
+        return host_address
+    async def stop(self):
+        await self.device.stop()
+        await super().stop()
 
 @pytest.fixture
-def kp_http_server(monkeypatch):
-    monkeypatch.setattr('kpkontrol.actions.SetParameter.method', 'get')
-    server_thread = KPHttpServerThread()
-    server_thread.start()
-    server_thread.running.wait()
-    yield 'localhost:{}'.format(server_thread.port)
-    server_thread.stop()
+def kp_http_server():
+    server = KPHttpServer()
+    return server
+
+@pytest.fixture
+def kp_http_device_servers():
+
+    for d in KP_RESPONSE_DATA:
+        if d['url_path'] != '/clips':
+            continue
+        clip_data = json.loads(d['response'])['clips']
+        break
+
+    servers = {}
+    for i in range(2):
+        device = FakeDevice(
+            name='FakeDevice_{}'.format(i),
+            serial_number='{:08}'.format(i),
+            parameter_defs=PARAMETER_DEFS,
+            clip_data=clip_data,
+        )
+        server = KPHttpDeviceServer(device=device)
+        servers[device.name] = server
+        print('server {} built'.format(device.name))
+    return servers
 
 FRAME_RATES = [
     (23.98, Fraction(24000, 1001)),

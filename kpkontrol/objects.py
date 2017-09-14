@@ -1,4 +1,7 @@
 import datetime
+import ipaddress
+from urllib.parse import urlparse
+import json
 
 from pydispatch.properties import Property, DictProperty
 
@@ -17,6 +20,8 @@ class DeviceParameter(ObjectBase):
         _cls = cls
         if isinstance(param, EnumParameter):
             _cls = DeviceEnumParameter
+        elif param.id == 'eParamID_NetworkServices':
+            _cls = NetworkServicesParameter
         return _cls(**kwargs)
     @property
     def name(self):
@@ -24,13 +29,13 @@ class DeviceParameter(ObjectBase):
     @property
     def id(self):
         return self.parameter.id
-    def set_value(self, value):
-        response = self.device.set_parameter(self.parameter, value)
+    async def set_value(self, value):
+        response = await self.device.set_parameter(self.parameter, value)
         if response == value:
             self.value = value
         return response
-    def get_value(self):
-        self.value = self.device.get_parameter(self.parameter)
+    async def get_value(self):
+        self.value = await self.device.get_parameter(self.parameter)
     def __repr__(self):
         return '<{self.__class__.__name__} {self.parameter}: {self.value}>'.format(self=self)
     def __str__(self):
@@ -46,15 +51,15 @@ class DeviceEnumParameter(DeviceParameter):
                 parameter_item=param_item,
             )
             self.enum_items[device_item.name] = device_item
-    def set_value(self, value):
+    async def set_value(self, value):
         key = self.parameter.format_value(value)
         param = self.enum_items[key]
-        response = self.device.set_parameter(self.parameter, param.value)
+        response = await self.device.set_parameter(self.parameter, param.value)
         if isinstance(response, ParameterEnumItem):
             self.value = self.enum_items[response.name]
         return response
-    def get_value(self):
-        value = self.device.get_parameter(self.parameter)
+    async def get_value(self):
+        value = await self.device.get_parameter(self.parameter)
         if value is None:
             return
         self.value = self.enum_items[value.name]
@@ -74,14 +79,131 @@ class DeviceEnumItem(ObjectBase):
     @property
     def value(self):
         return self.parameter_item.value
-    def set_active(self):
-        self.device_parameter.set_value(self.name)
+    async def set_active(self):
+        await self.device_parameter.set_value(self.name)
     def on_device_parameter_value(self, instance, value, **kwargs):
         self.active = value is self
     def __repr__(self):
         return '<{self.__class__.__name__} {self.parameter_item}: active={self.active}'.format(self=self)
     def __str__(self):
         return self.name
+
+class NetworkServicesParameter(DeviceParameter):
+    devices = DictProperty()
+    _events_ = ['on_device_added', 'on_device_removed']
+    def __init__(self, **kwargs):
+        self.bind(value=self.on_value)
+        super(NetworkServicesParameter, self).__init__(**kwargs)
+    def on_value(self, instance, value, **kwargs):
+        if not isinstance(value, list):
+            value = json.loads(value)
+        keys = set()
+        for data in value:
+            d = self.add_device_obj(**data)
+            keys.add(d.id)
+        to_remove = set(self.devices.keys()) - keys
+        for key in to_remove:
+            d = self.devices[key]
+            d.unbind(self)
+            del self.devices[key]
+            self.emit('on_device_removed', d, parameter=self)
+    def add_device_obj(self, **data):
+        data.setdefault('device_parameter', self)
+        d = NetworkDevice(**data)
+        if d.id in self.devices:
+            return d
+        self.devices[d.id] = d
+        d.bind(device_id=self.on_device_id)
+        self.emit('on_device_added', d, parameter=self)
+        return d
+    def on_device_id(self, instance, value, **kwargs):
+        old = kwargs.get('old')
+        if old and old in self.devices:
+            del self.devices[old]
+        self.devices[value] = instance
+    def __repr__(self):
+        return '<{self.__class__.__name__} {self.parameter}: {self.devices}>'.format(self=self)
+    def __str__(self):
+        return self.name
+
+class NetworkDevice(ObjectBase):
+    device_id = Property()
+    device_name = Property()
+    host_name = Property()
+    description = Property()
+    ip_address = Property()
+    port = Property()
+    service_type = Property()
+    service_domain = Property()
+    gang_enabled = Property(False)
+    gang_master = Property(False)
+    gang_members = DictProperty()
+    __attribute_names = [
+        'device_name', 'host_name', 'description', 'ip_address', 'port',
+        'service_type', 'service_domain', 'device_parameter',
+    ]
+    def __init__(self, **kwargs):
+        kwargs['port'] = int(kwargs.get('port', 80))
+        self.bind(
+            ip_address=self._on_ip_prop,
+            port=self._on_ip_prop,
+        )
+        super(NetworkDevice, self).__init__(**kwargs)
+        self._check_gang_params()
+        self.device.bind(
+            on_parameter_value=self.on_device_parameter_value,
+            network_devices=self.on_device_network_devices,
+        )
+    @property
+    def id(self):
+        return self.device_id
+    @property
+    def host_address(self):
+        return ':'.join([str(self.ip_address), str(self.port)])
+    @property
+    def service_uri(self):
+        return '.'.join([self.host_name, self.service_type, self.service_domain])
+    @property
+    def is_host_device(self):
+        param = self.device.all_parameters['eParamID_IPAddress_3']
+        if ipaddress.ip_address(self.ip_address) != param.value:
+            return False
+        param = self.device.all_parameters['eParamID_SysName']
+        if self.host_name != param.value:
+            return False
+        return True
+    @property
+    def device(self):
+        return self.device_parameter.device
+    def _on_ip_prop(self, *args, **kwargs):
+        self.device_id = '{self.ip_address}:{self.port}'.format(self=self)
+    def _check_gang_params(self, *args, **kwargs):
+        all_params = self.device.all_parameters
+        if self.is_host_device:
+            self.gang_enabled = str(all_params['eParamID_GangEnable'].value) == 'ON'
+            self.gang_master = str(all_params['eParamID_GangMaster'].value) == 'ON'
+            addrs = all_params['eParamID_GangList'].value.split(',')
+            for addr in addrs:
+                if addr in self.gang_members:
+                    continue
+                d = self.device.network_devices.get(addr)
+                if d is not None:
+                    self.gang_members[addr] = d
+            to_remove = set(self.gang_members.keys()) - set(addrs)
+            for addr in to_remove:
+                del self.gang_members[addr]
+        else:
+            self.gang_enabled = self.ip_address in all_params['eParamID_GangList'].value
+    def on_device_parameter_value(self, instance, value, **kwargs):
+        if 'Gang' not in instance.id:
+            return
+        self._check_gang_params()
+    def on_device_network_devices(self, instance, value, **kwargs):
+        self._check_gang_params()
+    def __repr__(self):
+        return '<{self.__class__.__name__}: {self}>'.format(self=self)
+    def __str__(self):
+        return '{self.host_name} ({self.ip_address})'.format(self=self)
 
 
 class ClipFormat(ObjectBase):
@@ -152,6 +274,8 @@ class Clip(ObjectBase):
         )
         kwargs['duration_timedelta'] = kwargs['duration_tc'].timedelta
         return cls(**kwargs)
+    def get_url(self, host_address):
+        return '/'.join([host_address.rstrip('/'), 'media', self.name])
     def __repr__(self):
         return '<{self.__class__.__name__}: {self}>'.format(self=self)
     def __str__(self):
