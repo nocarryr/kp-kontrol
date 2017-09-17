@@ -280,3 +280,147 @@ class Clip(ObjectBase):
         return '<{self.__class__.__name__}: {self}>'.format(self=self)
     def __str__(self):
         return self.name
+
+class MetaClip(ObjectBase):
+    name = Property()
+    start_timecode = Property()
+    end_timecode = Property()
+    duration_tc = Property()
+    total_frames = Property()
+    __attribute_names = [
+        'name', 'device', 'source_clip', 'source_clip_name',
+        'start_timecode', 'end_timecode',
+    ]
+    def __init__(self, **kwargs):
+        source_clip = kwargs.get('source_clip')
+        if source_clip is None:
+            device = kwargs.get('device')
+            source_clip_name = kwargs.get('source_clip_name')
+            if source_clip_name is not None and hasattr(device, 'clips'):
+                source_clip = device.clips.get(source_clip_name)
+                kwargs.setdefault('source_clip', source_clip)
+            elif hasattr(device, 'transport'):
+                source_clip = device.transport.clip
+                kwargs.setdefault('source_clip', source_clip)
+        if source_clip is not None:
+            kwargs.setdefault('source_clip_name', source_clip.name)
+            kwargs.setdefault('name', source_clip.name)
+
+        self.bind(
+            start_timecode=self._on_tc_range,
+            end_timecode=self._on_tc_range,
+        )
+
+        super().__init__(**kwargs)
+
+        if self.source_clip is not None:
+            self._init_timecode_objs()
+        else:
+            self.device.bind(clips=self.on_device_clips)
+
+    @classmethod
+    async def create_from_current(cls, **kwargs):
+        device = kwargs.get('device')
+        transport = device.transport
+        async with transport.timecode.freerun_lock:
+            start_tc = transport.timecode.copy()
+        kwargs.setdefault('start_timecode', start_tc)
+        kwargs['source_clip'] = transport.clip
+        return cls(**kwargs)
+
+    def _init_timecode_objs(self):
+        if self.start_timecode is None:
+            self.start_timecode = self.source_clip.start_timecode.copy()
+        else:
+            self.start_timecode = self._create_timecode(self.start_timecode)
+        if self.end_timecode is None:
+            self.end_timecode = self.source_clip.start_timecode + self.source_clip.total_frames
+        else:
+            self.end_timecode = self._create_timecode(self.end_timecode)
+
+    def on_device_clips(self, device, clips, **kwargs):
+        if self.source_clip is not None:
+            return
+        clip = clips.get(self.source_clip_name)
+        if clip is None:
+            return
+        self.device.unbind(self.on_device_clips)
+        self.source_clip = clip
+        self._init_timecode_objs()
+
+    def _on_tc_range(self, instance, tc, **kwargs):
+        start_tc = self.start_timecode
+        end_tc = self.end_timecode
+        if not isinstance(start_tc, Timecode) or not isinstance(end_tc, Timecode):
+            return
+        self.duration_tc = end_tc - start_tc
+        self.total_frames = self.duration_tc.total_frames
+
+    def _create_timecode(self, tc):
+        fmt = self.source_clip.start_timecode.frame_format
+        if isinstance(tc, str):
+            tc = Timecode.parse(tc, frame_rate=fmt.rate)
+        elif isinstance(tc, int):
+            tc = Timecode.from_frames(tc, frame_format=fmt)
+        return tc
+
+    async def set_cue_in(self, tc=None):
+        if tc is None:
+            transport = self.device.transport
+            async with transport.timecode.freerun_lock:
+                tc = transport.timecode.copy()
+        else:
+            tc = self._create_timecode(tc)
+        if tc > self.end_timecode:
+            return
+        self.start_timecode = tc
+
+    async def set_cue_out(self, tc=None):
+        if tc is None:
+            transport = self.device.transport
+            async with transport.timecode.freerun_lock:
+                tc = transport.timecode.copy()
+        else:
+            tc = self._create_timecode(tc)
+        if tc < self.start_timecode:
+            return
+        self.end_timecode = tc
+
+    async def play(self):
+        self.remaining = self.end_timecode - self.start_timecode
+        transport = self.device.transport
+        if transport.active:
+            await transport.pause()
+        if transport.clip is not self.source_clip:
+            await transport.go_to_clip(self.source_clip)
+        await transport.go_to_timecode(self.start_timecode)
+        await transport.play()
+        while True:
+            if transport.clip is not self.source_clip:
+                break
+            if not transport.active:
+                break
+            async with transport.freerun_lock:
+                tc = transport.timecode.copy()
+            if tc >= self.end_timecode:
+                await self.transport.pause()
+                break
+            self.remaining = self.end_timecode - tc
+            if self.remaining.total_seconds <= 1:
+                timeout = tc.frame_format.rate.float_value
+            else:
+                timeout = .5
+            await asyncio.sleep(timeout)
+
+    def _serialize(self):
+        d = {k:getattr(self, k) for k in ['name', 'source_clip_name']}
+        d.update({
+            'start_timecode':str(self.start_timecode),
+            'end_timecode':str(self.end_timecode),
+        })
+        return d
+
+    def __repr__(self):
+        return '<{self.__class__.__name__}: {self}>'.format(self=self)
+    def __str__(self):
+        return self.name

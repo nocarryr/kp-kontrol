@@ -12,6 +12,7 @@ from kpkontrol.objects import (
     NetworkServicesParameter,
     NetworkDevice,
     Clip,
+    MetaClip,
 )
 from kpkontrol.timecode import FrameRate, FrameFormat, Timecode
 
@@ -19,6 +20,7 @@ class KpDevice(ObjectBase):
     name = Property()
     serial_number = Property()
     clips = DictProperty()
+    meta_clips = DictProperty()
     input_format = Property()
     input_timecode = Property()
     connected = Property(False)
@@ -27,16 +29,24 @@ class KpDevice(ObjectBase):
     network_devices = DictProperty()
     __attribute_names = [
         'host_address', 'name', 'serial_number',
-        'transport', 'clips',
+        'transport', 'clips', 'meta_clips',
     ]
     __attribute_defaults = {
-        'clips':{}
+        'clips':{}, 'meta_clips':{},
     }
     _events_ = [
         'on_events_received', 'on_parameter_value',
         'on_network_device_added', 'on_network_device_removed',
     ]
     def __init__(self, **kwargs):
+        meta_clips = kwargs.get('meta_clips', {})
+        for key in meta_clips.keys():
+            mclip = meta_clips[key]
+            if isinstance(mclip, dict):
+                mclip['device'] = self
+                mclip = MetaClip(**mclip)
+                meta_clips[key] = mclip
+        kwargs['meta_clips'] = meta_clips
         super(KpDevice, self).__init__(**kwargs)
         self.all_parameters = {}
         self.loop = kwargs.get('loop')
@@ -124,6 +134,9 @@ class KpDevice(ObjectBase):
                     if getattr(self.clips[clip.name], attr) == val:
                         continue
                     setattr(self.clips[clip.name], attr, val)
+            if clip.name not in self.meta_clips:
+                mclip = MetaClip(device=self, source_clip=clip)
+                self.meta_clips[clip.name] = mclip
         current = await self.get_parameter('eParamID_CurrentClip')
         if current in self.clips:
             self.transport.clip = self.clips[current]
@@ -250,6 +263,12 @@ class KpDevice(ObjectBase):
         p = self.all_parameters['eParamID_GangList']
         await p.set_value('')
         await p.get_value()
+
+    def _serialize(self):
+        d = {k:getattr(self, k) for k in ['name', 'serial_number', 'host_address']}
+        d['meta_clips'] = {}
+        for key, mclip in self.meta_clips.items():
+            d['meta_clips'][key] = mclip._serialize()
 
 
 class KpTransport(ObjectBase):
