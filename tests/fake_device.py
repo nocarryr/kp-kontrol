@@ -45,6 +45,7 @@ class FakeDevice(object):
     async def start(self):
         if self.loop is None:
             self.loop = asyncio.get_event_loop()
+        self._param_lock = asyncio.Lock()
         for key, val in DEFAULT_PARAMETER_VALS.items():
             await self.set_formatted_value(key, val)
 
@@ -178,6 +179,9 @@ class FakeDevice(object):
             value = int(value)
         return value
     async def set_parameter_value(self, param_id, value):
+        locked = self._param_lock.locked()
+        if not locked:
+            await self._param_lock.acquire()
         param = self.parameters[param_id]
         if param.param_type in ['integer', 'enum', 'octets']:
             value = int(value)
@@ -195,7 +199,10 @@ class FakeDevice(object):
             await self.cue_to_timecode(value)
         elif param_id == 'eParamID_CurrentClip':
             await self.update_current_clip(old)
-        return json.dumps(self.format_response(param_id))
+        response = self.format_response(param_id)
+        if not locked:
+            self._param_lock.release()
+        return json.dumps(response)
     def get_formatted_value(self, param_id):
         value = self.get_parameter_value(param_id)
         param = self.parameters[param_id]
@@ -231,6 +238,10 @@ class FakeDevice(object):
         else:
             d = {'param_id':param_id, 'str_value':str(value), 'value':value, 'int_value':value}
         return d
+    async def get_response_external(self, param_id):
+        async with self._param_lock:
+            d = self.format_response(param_id)
+        return d
     async def build_network_services_data(self, devices):
         l = []
         for device in devices:
@@ -257,6 +268,7 @@ class FakeDevice(object):
             params = ['eParamID_NetworkServices']
         else:
             params = ['eParamID_DisplayTimecode']
-        for param_id in params:
-            l.append(self.format_response(param_id))
+        async with self._param_lock:
+            for param_id in params:
+                l.append(self.format_response(param_id))
         return json.dumps(l)

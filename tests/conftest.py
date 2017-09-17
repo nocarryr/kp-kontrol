@@ -187,7 +187,7 @@ class KPDeviceHttpHandler(KPHttpHandler):
         super().__init__(**kwargs)
         self.device = self.server.device
     async def param_get_response(self, param_id):
-        r = self.device.format_response(param_id)
+        r = await self.device.get_response_external(param_id)
         return {'response':json.dumps(r)}
     async def param_set_response(self, param_id, value):
         r = await self.device.set_parameter_value(param_id, value)
