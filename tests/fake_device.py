@@ -115,8 +115,9 @@ class FakeDevice(object):
     async def cue_to_timecode(self, tc_str):
         if self.current_clip is None:
             return
-        await self.set_formatted_value('eParamID_TransportState', 'Paused')
         await self.timecode.set_from_string_async(tc_str)
+        await self.timecode.stop_freerun()
+        await self.set_formatted_value('eParamID_TransportCommand', 'Cue')
     async def update_transport_command(self, old):
         cmd = self.get_formatted_value('eParamID_TransportCommand')
         if cmd == 'Play Command':
@@ -167,7 +168,7 @@ class FakeDevice(object):
                 clip_name = sorted(self.clips.keys())[0]
                 await self.set_formatted_value('eParamID_CurrentClip', clip_name)
             await self.timecode.start_freerun()
-        elif self.paused:
+        elif self.paused and self.timecode is not None:
             await self.timecode.stop_freerun()
         elif self.stopped:
             await self.set_formatted_value('eParamID_CurrentClip', '')
@@ -192,7 +193,7 @@ class FakeDevice(object):
         elif param_id == 'eParamID_TransportState':
             await self.update_transport_state(old)
         elif param_id == 'eParamID_GoToClip':
-            await self.set_formatted_value('eParamID_TransportState', 'Idle')
+            await self.set_formatted_value('eParamID_TransportCommand', 'Cue')
             await self.set_parameter_value('eParamID_CurrentClip', value)
             await self.set_formatted_value('eParamID_TransportState', 'Paused')
         elif param_id == 'eParamID_CueToTimecode':
