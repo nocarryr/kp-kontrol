@@ -287,6 +287,7 @@ class KpTransport(ObjectBase):
     timecode_remaining_str = Property('00:00:00:00')
     frame_range = ListProperty([0, 1])
     clip = Property()
+    meta_clip = Property()
     __attribute_names = [
         'active', 'playing', 'recording', 'paused', 'shuttle',
         'timecode', 'clip', 'device',
@@ -301,6 +302,7 @@ class KpTransport(ObjectBase):
     def __init__(self, **kwargs):
         self.bind(
             clip=self.on_clip,
+            meta_clip=self.on_meta_clip,
             active=self.on_active,
             playing=self.on_playing,
             recording=self.on_recording,
@@ -385,19 +387,58 @@ class KpTransport(ObjectBase):
         while nframes > 0:
             await self.set_transport_async('Single Step Reverse')
             nframes -= 1
+    async def set_cue_in(self, tc=None):
+        if self.meta_clip is not None:
+            await self.meta_clip.set_cue_in(tc)
+    async def set_cue_out(self, tc=None):
+        if self.meta_clip is not None:
+            await self.meta_clip.set_cue_out(tc)
     def on_clip(self, instance, clip, **kwargs):
         if clip is None:
+            self.meta_clip = None
             self.timecode = None
             self.timecode_remaining = None
-        self.timecode = clip.start_timecode.copy()
+        else:
+            self.meta_clip = self.device.meta_clips[clip.name]
+    def on_meta_clip(self, instance, clip, **kwargs):
+        old = kwargs.get('old')
+        if old is not None:
+            old.unbind(self)
+        if clip is None:
+            return
+        self.timecode = self.clip.start_timecode.copy()
         self.timecode_remaining = Timecode(
             frame_format=FrameFormat(rate=self.timecode.frame_format.rate),
-            total_frames=self.clip.duration_tc.total_frames,
+            total_frames=clip.duration_tc.total_frames,
         )
-        start_f = self.clip.start_timecode.total_frames
         self.frame_range = [
-            start_f,
-            start_f + self.clip.duration_tc.total_frames
+            clip.start_timecode.total_frames,
+            clip.end_timecode.total_frames
+        ]
+        clip.bind(
+            start_timecode=self.on_meta_clip_tc,
+            end_timecode=self.on_meta_clip_tc,
+        )
+    def on_meta_clip_tc(self, instance, value, **kwargs):
+        if instance is not self.meta_clip:
+            return
+        prop = kwargs.get('property')
+        async def set_tc(end_timecode):
+            tc = self.timecode
+            if tc is None:
+                return
+            tf = end_timecode.total_frames
+            if hasattr(tc, 'freerun_lock'):
+                async with tc.freerun_lock:
+                    tf -= tc.total_frames
+            else:
+                tf -= tc.total_frames
+            self.timecode_remaining.set_total_frames(tf)
+        if prop.name == 'end_timecode':
+            asyncio.ensure_future(set_tc(value), loop=self.loop)
+        self.frame_range = [
+            self.meta_clip.start_timecode.total_frames,
+            self.meta_clip.end_timecode.total_frames,
         ]
     def on_active(self, *args, **kwargs):
         pass
@@ -439,6 +480,9 @@ class KpTransport(ObjectBase):
         prev_frames = kwargs.get('old')
         if tc is not self.timecode:
             return
+        if self.meta_clip is not None and self.playing:
+            if tc >= self.meta_clip.end_timecode:
+                asyncio.ensure_future(self.pause(), loop=self.loop)
         self.timecode_str = str(tc)
         if self.timecode_remaining is not None:
             if total_frames > prev_frames:
