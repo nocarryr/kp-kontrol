@@ -348,7 +348,17 @@ class KpTransport(ObjectBase):
             clip = self.device.clips[clip]
         param = self.device.all_parameters['eParamID_GoToClip']
         await param.set_value(clip.name)
-        self.clip = clip
+        param = self.device.all_parameters['eParamID_CurrentClip']
+        while param.value != clip.name:
+            await param.get_value()
+        while True:
+            await asyncio.sleep(0)
+            if self.clip is not clip:
+                continue
+            if self.meta_clip is None or self.meta_clip.source_clip is not clip:
+                continue
+            break
+        await self.go_to_timecode(self.meta_clip.start_timecode)
     async def go_to_frame(self, frame):
         tc = self.timecode.copy()
         tc.set_total_frames(frame)
@@ -356,22 +366,30 @@ class KpTransport(ObjectBase):
     async def go_to_timecode(self, tc):
         if isinstance(tc, Timecode):
             tc = str(tc)
+        await self.transport_param_get.get_value()
         param = self.device.all_parameters['eParamID_CueToTimecode']
         playing = self.playing
         await param.set_value(tc)
+        param = self.timecode_param
+        await param.get_value()
+        while param.value != tc:
+            await param.get_value()
+            await asyncio.sleep(0)
         if playing:
-            while not self.timecode_str == tc:
-                await asyncio.sleep(0)
             await self.play()
         else:
             await self.set_transport_async('Cue')
     async def play(self):
+        if self.meta_clip is not None:
+            if self.timecode < self.meta_clip.start_timecode:
+                await self.go_to_timecode(self.meta_clip.start_timecode)
         await self.set_transport_async('Play Command')
     async def record(self):
         await self.set_transport_async('Record Command')
     async def stop(self):
         await self.set_transport_async('Stop Command')
     async def pause(self):
+        await self.transport_param_get.get_value()
         if self.paused:
             return
         await self.stop()
