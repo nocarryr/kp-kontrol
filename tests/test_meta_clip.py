@@ -4,7 +4,7 @@ import pytest
 from kpkontrol.device import KpDevice
 
 @pytest.mark.asyncio
-async def test_dummy_device(kp_http_device_servers):
+async def test_meta_clip(kp_http_device_servers):
 
     server = kp_http_device_servers['FakeDevice_0']
     await server.start()
