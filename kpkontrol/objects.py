@@ -318,16 +318,6 @@ class MetaClip(ObjectBase):
         else:
             self.device.bind(clips=self.on_device_clips)
 
-    @classmethod
-    async def create_from_current(cls, **kwargs):
-        device = kwargs.get('device')
-        transport = device.transport
-        async with transport.timecode.freerun_lock:
-            start_tc = transport.timecode.copy()
-        kwargs.setdefault('start_timecode', start_tc)
-        kwargs['source_clip'] = transport.clip
-        return cls(**kwargs)
-
     def _init_timecode_objs(self):
         if self.start_timecode is None:
             self.start_timecode = self.source_clip.start_timecode.copy()
@@ -385,32 +375,6 @@ class MetaClip(ObjectBase):
         if tc < self.start_timecode:
             return
         self.end_timecode = tc
-
-    async def play(self):
-        self.remaining = self.end_timecode - self.start_timecode
-        transport = self.device.transport
-        if transport.active:
-            await transport.pause()
-        if transport.clip is not self.source_clip:
-            await transport.go_to_clip(self.source_clip)
-        await transport.go_to_timecode(self.start_timecode)
-        await transport.play()
-        while True:
-            if transport.clip is not self.source_clip:
-                break
-            if not transport.active:
-                break
-            async with transport.freerun_lock:
-                tc = transport.timecode.copy()
-            if tc >= self.end_timecode:
-                await self.transport.pause()
-                break
-            self.remaining = self.end_timecode - tc
-            if self.remaining.total_seconds <= 1:
-                timeout = tc.frame_format.rate.float_value
-            else:
-                timeout = .5
-            await asyncio.sleep(timeout)
 
     def _serialize(self):
         d = {k:getattr(self, k) for k in ['name', 'source_clip_name']}
