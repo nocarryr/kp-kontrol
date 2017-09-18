@@ -1,3 +1,4 @@
+import json
 import asyncio
 import pytest
 
@@ -76,4 +77,58 @@ async def test_meta_clip(kp_http_device_servers):
 
 
     await device.stop()
+    await server.stop()
+
+@pytest.mark.asyncio
+async def test_meta_clip_serialization(kp_http_device_servers):
+
+    server = kp_http_device_servers['FakeDevice_0']
+    await server.start()
+
+    device1 = await KpDevice.create(host_address=server.host_address)
+    session = device1.session
+
+    await device1.transport.go_to_clip('A003SC10TK23.mov')
+
+    await device1.transport.play()
+
+    await asyncio.sleep(2)
+
+    await device1.transport.set_cue_in()
+
+    await device1.transport.pause()
+    await asyncio.sleep(1)
+
+    await device1.transport.go_to_timecode('00:00:10;00')
+    await asyncio.sleep(.5)
+
+    await device1.transport.set_cue_out()
+
+    meta_clip = device1.transport.meta_clip
+    assert meta_clip.start_timecode.total_frames > 0
+    assert meta_clip.end_timecode == device1.transport.timecode
+
+    data = device1._serialize()
+    s = json.dumps(data)
+
+    kw = json.loads(s)
+    kw['session'] = session
+    device2 = await KpDevice.create(**kw)
+
+    for key, meta_clip1 in device1.meta_clips.items():
+        assert key in device2.meta_clips
+        meta_clip2 = device2.meta_clips[key]
+
+        assert meta_clip1.name == meta_clip2.name
+        assert meta_clip1.source_clip_name == meta_clip2.source_clip_name
+        assert meta_clip1.start_timecode == meta_clip2.start_timecode
+        assert meta_clip1.end_timecode == meta_clip2.end_timecode
+        assert meta_clip1.duration_tc == meta_clip2.duration_tc
+        assert meta_clip1.total_frames == meta_clip2.total_frames
+
+    assert device1.transport.meta_clip.name == device2.transport.meta_clip.name
+
+    await device2.stop(close_session=False)
+    await device1.stop()
+
     await server.stop()
