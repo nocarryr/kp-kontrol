@@ -72,7 +72,10 @@ async def test_meta_clip(kp_http_device_servers):
     await asyncio.sleep(4)
 
     assert not device.transport.playing
-    assert device.transport.timecode == meta_clip.end_timecode
+
+    # Allow a margin of +/- 2 frames
+    tc_diff = device.transport.timecode.total_frames - meta_clip.end_timecode.total_frames
+    assert -2 < tc_diff < 2
 
 
 
