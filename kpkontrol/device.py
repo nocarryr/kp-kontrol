@@ -269,6 +269,7 @@ class KpDevice(ObjectBase):
         d['meta_clips'] = {}
         for key, mclip in self.meta_clips.items():
             d['meta_clips'][key] = mclip._serialize()
+        return d
 
 
 class KpTransport(ObjectBase):
